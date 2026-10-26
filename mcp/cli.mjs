@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-// 手で試すための入口：node mcp/cli.mjs --out a.mp4 --motion cw --seconds 8 絵1.png [絵2.png …]
-//   設定の名前は画面と同じ（motion amount period stereo pivot view layout seconds perImage countdown caption endText fps）
+// 手で試すための入口：node mcp/cli.mjs --out a.mp4 --motion cw --cycles 2 絵1.png [絵2.png …]
+//   設定の名前は画面と同じ（motion amount period stereo pivot view layout cycles countdown caption endText fps）
+//   長さ＝1周の秒数×周回数×絵の枚数（必ず永久ループ）。--seconds を渡すと近い周回数に丸める
 //   --shot 画面.png で画面の写しも撮る
 import { makeVideo, close, screenshot } from './core.mjs';
 

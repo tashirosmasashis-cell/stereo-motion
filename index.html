@@ -33,7 +33,6 @@
       </div>
       <p id="empty" class="muted">何枚でも入れられます。2枚以上なら順番に切り替わります。</p>
       <ul id="items" class="items"></ul>
-      <label id="per-image-row" class="row" hidden>1枚の秒数 <input type="range" id="perImage" min="2" max="60" step="1"><output id="perImageV"></output></label>
       <p id="status" class="status" role="status"></p>
     </div>
 
@@ -59,7 +58,8 @@
         <label class="chk"><input type="radio" name="layout" value="portrait">縦（1080×1920・スマホ向け）</label>
         <label class="chk"><input type="radio" name="layout" value="sbs">左右に並べただけ</label>
       </div>
-      <label class="row">長さ <input type="range" id="seconds" min="3" max="120" step="1"><output id="secondsV"></output></label>
+      <label class="row">周回数 <input type="range" id="cycles" min="1" max="20" step="1"><output id="cyclesV"></output></label>
+      <p class="row-note">長さ <b id="lengthV"></b> ＝ 1周の秒数 × 周回数（絵1枚あたり）× 絵の枚数。動画の最後は最初のコマにそのままつながるので、くり返し再生でつなぎ目が出ません。</p>
       <div id="text-rows">
         <label class="chk"><input type="checkbox" id="countdown">上に残り秒数を出す</label>
         <label class="col">下の文（2行まで）<textarea id="caption" rows="2"></textarea></label>

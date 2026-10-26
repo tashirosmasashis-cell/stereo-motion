@@ -1,7 +1,7 @@
 import './style.css';
 import { prepare, loadModel, type Prepared } from './depth';
 import { Renderer, type Layer } from './render';
-import { DEFAULTS, MOTIONS, clampSettings, drawFrame, layerAt, type Settings, type Frame } from './scene';
+import { DEFAULTS, MOTIONS, clampSettings, drawFrame, layerAt, totalFrames, totalSeconds, type Settings, type Frame } from './scene';
 import { encodeVideo } from './export';
 
 // ---- 状態 ----
@@ -114,7 +114,7 @@ function renderList() {
   $('#empty').hidden = items.length > 0;
   // 奥行きは、準備できた絵があるときだけ見られる
   $<HTMLButtonElement>('#depth').disabled = !items.some((i) => i.status === 'ok');
-  $('#per-image-row').hidden = items.length < 2;
+  updateLength();
 }
 
 function status(msg: string) {
@@ -141,8 +141,7 @@ function buildControls() {
   num('amount', '#amount');
   num('period', '#period');
   num('stereo', '#stereo');
-  num('seconds', '#seconds');
-  num('perImage', '#perImage');
+  num('cycles', '#cycles');
   const pivot = $<HTMLInputElement>('#pivot'), pivotAuto = $<HTMLInputElement>('#pivotAuto');
   pivot.addEventListener('input', () => setSettings({ pivot: Number(pivot.value) / 100 }));
   pivotAuto.addEventListener('change', () => setSettings({ pivot: pivotAuto.checked ? -1 : 0.5 }));
@@ -165,8 +164,8 @@ function syncControls() {
   set('#amount', settings.amount, '#amountV', (v) => `${v.toFixed(1)}%`);
   set('#period', settings.period, '#periodV', (v) => `${v}秒`);
   set('#stereo', settings.stereo, '#stereoV', (v) => `${v.toFixed(1)}%`);
-  set('#seconds', settings.seconds, '#secondsV', (v) => `${v}秒`);
-  set('#perImage', settings.perImage, '#perImageV', (v) => `${v}秒`);
+  set('#cycles', settings.cycles, '#cyclesV', (v) => `${v}周`);
+  updateLength();
   const auto = settings.pivot < 0;
   $<HTMLInputElement>('#pivotAuto').checked = auto;
   $<HTMLInputElement>('#pivot').disabled = auto;
@@ -180,6 +179,13 @@ function syncControls() {
   const end = $<HTMLInputElement>('#endText');
   if (document.activeElement !== end) end.value = settings.endText;
   $('#text-rows').hidden = settings.layout !== 'portrait';
+}
+
+// 長さは計算で決まる（自由に決めない＝必ずループになる）
+function updateLength() {
+  const n = Math.max(1, items.filter((i) => i.status === 'ok').length);
+  const sec = totalSeconds(settings, n);
+  $('#lengthV').textContent = `${Number(sec.toFixed(2))}秒` + (n > 1 ? `（${n}枚）` : '');
 }
 
 function motionIcon(m: string): string {
@@ -198,10 +204,11 @@ let t0 = performance.now();
 function loop(now: number) {
   if (!exporting) {
     const ls = layers();
-    const t = ((now - t0) / 1000) % settings.seconds;
+    const total = totalSeconds(settings, ls.length);
+    const t = ((now - t0) / 1000) % total;
     if (showDepth && ls.length) drawDepth(layerAt(settings, ls, t));
     else drawFrame(renderer, frame, settings, ls, t);
-    $('#time').textContent = ls.length ? `${t.toFixed(1)} / ${settings.seconds}秒` : '';
+    $('#time').textContent = ls.length ? `${t.toFixed(1)} / ${Number(total.toFixed(2))}秒（くり返し）` : '';
   }
   requestAnimationFrame(loop);
 }
@@ -224,7 +231,7 @@ async function exportVideo(): Promise<{ blob: Blob; ext: string }> {
   const ls = layers();
   if (!ls.length) throw new Error('先に絵を入れてください');
   const fps = settings.fps;
-  const n = Math.round(settings.seconds * fps);
+  const n = totalFrames(settings, ls.length);
   exporting = true;
   stopFlag = false;
   try {
@@ -300,7 +307,7 @@ window.stereoMotion = {
   },
   setSettings(p: Partial<Settings>) { setSettings(p); return settings; },
   getSettings() { return settings; },
-  frameCount() { return Math.round(settings.seconds * settings.fps); },
+  frameCount() { return totalFrames(settings, layers().length); },
   frame(i: number, type = 'image/jpeg', quality = 0.95) {
     exporting = true;
     drawFrame(renderer, frame, settings, layers(), i / settings.fps);

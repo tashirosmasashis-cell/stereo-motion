@@ -18,8 +18,7 @@ export type Settings = {
   pivot: number; // 回る軸の深さ（0＝一番奥・1＝一番手前・-1＝絵ごとに自動）
   view: 'parallel' | 'cross'; // 平行法／交差法
   layout: 'portrait' | 'sbs'; // 縦 1080×1920 のまん中／横並びそのまま
-  seconds: number; // 動画の長さ
-  perImage: number; // 1枚あたりの秒数（絵が2枚以上のとき）
+  cycles: number; // 1枚あたりの周回数（長さ＝1周の秒数×周回数×絵の枚数＝必ず最初のコマにつながる）
   countdown: boolean; // 残り秒数を出す
   caption: string; // 下の文（改行で2行まで）
   endText: string; // 最後の2秒に下の文の代わりに出す文
@@ -34,8 +33,7 @@ export const DEFAULTS: Settings = {
   pivot: -1,
   view: 'parallel',
   layout: 'portrait',
-  seconds: 15,
-  perImage: 10,
+  cycles: 4,
   countdown: true,
   caption: '遠くを見るように目の力をぬいて\n3つに見えたら真ん中を見つめよう',
   endText: 'おつかれさまでした！',
@@ -48,22 +46,28 @@ export function clampSettings(s: Settings): Settings {
     ...s,
     motion: MOTIONS.some((m) => m.id === s.motion) ? s.motion : DEFAULTS.motion,
     amount: n(s.amount, 0, 10, DEFAULTS.amount),
-    period: n(s.period, 1, 30, DEFAULTS.period),
+    // 1周がちょうど整数のコマになるように丸める（最後のコマの次が最初のコマにつながる）
+    period: Math.max(1, Math.round(n(s.period, 1, 30, DEFAULTS.period) * n(s.fps, 10, 60, 30)) / n(s.fps, 10, 60, 30)),
     stereo: n(s.stereo, 0, 12, DEFAULTS.stereo),
     pivot: s.pivot < 0 ? -1 : n(s.pivot, 0, 1, 0.5),
     view: s.view === 'cross' ? 'cross' : 'parallel',
     layout: s.layout === 'sbs' ? 'sbs' : 'portrait',
-    seconds: n(s.seconds, 1, 180, DEFAULTS.seconds),
-    perImage: n(s.perImage, 1, 180, DEFAULTS.perImage),
+    cycles: Math.round(n(s.cycles, 1, 60, DEFAULTS.cycles)),
     fps: n(s.fps, 10, 60, 30),
     caption: String(s.caption ?? '').slice(0, 120),
     endText: String(s.endText ?? '').slice(0, 60),
   };
 }
 
+// 長さは「1周×周回数×絵の枚数」でしか決まらない＝動画はいつも永久ループになる（本人 2026-10-26「最初の画像に戻れば永久ループに」）
+export const framesPerCycle = (s: Settings) => Math.max(1, Math.round(s.period * s.fps));
+export const totalFrames = (s: Settings, images: number) => framesPerCycle(s) * s.cycles * Math.max(1, images);
+export const totalSeconds = (s: Settings, images: number) => totalFrames(s, images) / s.fps;
+const perImageSeconds = (s: Settings) => (framesPerCycle(s) * s.cycles) / s.fps;
+
 // カメラの位置（幅に対する割合の単位・下が＋）
 function cam(s: Settings, t: number): [number, number] {
-  const a = s.amount / 100, w = (2 * Math.PI * t) / s.period;
+  const a = s.amount / 100, w = (2 * Math.PI * t) / (framesPerCycle(s) / s.fps);
   switch (s.motion) {
     case 'sway-x': return [a * Math.sin(w), 0];
     case 'sway-y': return [0, a * Math.sin(w)];
@@ -120,7 +124,7 @@ export function outputSize(s: Settings, layers: Layer[]): [number, number] {
 
 export function layerAt(s: Settings, layers: Layer[], t: number): Layer {
   if (layers.length <= 1) return layers[0];
-  const i = Math.floor(t / s.perImage) % layers.length;
+  const i = Math.floor(t / perImageSeconds(s) + 1e-9) % layers.length;
   return layers[i];
 }
 
@@ -165,7 +169,7 @@ export function drawFrame(r: Renderer, f: Frame, s: Settings, layers: Layer[], t
   ctx.textBaseline = 'middle';
   ctx.lineJoin = 'round';
   if (s.countdown) {
-    const left = Math.max(0, Math.ceil(s.seconds - t - 1e-6));
+    const left = Math.max(0, Math.ceil(totalSeconds(s, layers.length) - t - 1e-6));
     ctx.font = `900 260px ${FONT}`;
     ctx.lineWidth = 22;
     ctx.strokeStyle = '#2f8f3a';
@@ -173,7 +177,7 @@ export function drawFrame(r: Renderer, f: Frame, s: Settings, layers: Layer[], t
     ctx.fillStyle = '#ffffff';
     ctx.fillText(String(left), W / 2, boxTop / 2 + 10);
   }
-  const ending = s.endText && s.seconds - t <= 2;
+  const ending = s.endText && totalSeconds(s, layers.length) - t <= 2;
   const lines = (ending ? s.endText : s.caption).split('\n').slice(0, 2).filter(Boolean);
   ctx.font = `700 56px ${FONT}`;
   const below = boxTop + maxH;

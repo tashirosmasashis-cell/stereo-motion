@@ -50,6 +50,8 @@ body { margin: 0; }
 .row output { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
 .row.radios { display: flex; flex-wrap: wrap; gap: 6px 16px; }
 .row:has(#pivotAuto) { grid-template-columns: 7.5em auto 1fr 4.5em; }
+.row-note { margin: -2px 0 10px; font-size: 13px; color: var(--muted); line-height: 1.6; }
+.row-note b { color: var(--ink); font-variant-numeric: tabular-nums; }
 .col { display: grid; gap: 6px; margin: 10px 0; font-size: 14px; }
 .chk { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; }
 input[type=range] { width: 100%; accent-color: var(--green); }

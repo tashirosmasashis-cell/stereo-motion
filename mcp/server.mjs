@@ -18,19 +18,19 @@ server.tool(
 
 server.tool(
   'make_stereo_video',
-  'Makes a side-by-side stereoscopic (parallel or cross-eye) video from one or more images. The camera sways or circles around the depth estimated from each image. Everything runs on this PC; images are never uploaded. Returns the path of the MP4.',
+  'Makes a side-by-side stereoscopic (parallel or cross-eye) video from one or more images. The camera sways or circles around the depth estimated from each image. The video always loops seamlessly (its length is whole motion cycles). Everything runs on this PC; images are never uploaded. Returns the path of the MP4.',
   {
     images: z.array(z.string()).min(1).describe('Absolute paths of the images (PNG/JPEG/WebP). Two or more are shown in order.'),
     out: z.string().optional().describe('Absolute path of the MP4 to write. Defaults to a temp file.'),
     motion: z.enum(['sway-x', 'sway-y', 'cw', 'ccw', 'still']).optional().describe('sway-x: left-right, sway-y: up-down, cw: clockwise circle, ccw: counter-clockwise circle'),
     amount: z.number().min(0).max(10).optional().describe('Camera motion size, percent of the image width (default 3.5)'),
-    period: z.number().min(1).max(30).optional().describe('Seconds per cycle (default 4)'),
+    period: z.number().min(1).max(30).optional().describe('Seconds per motion cycle (default 4). Rounded to a whole number of frames so the video loops seamlessly'),
     stereo: z.number().min(0).max(12).optional().describe('Left/right disparity, percent of the image width (default 6)'),
     pivot: z.number().min(-1).max(1).optional().describe('Depth the camera turns around: 0 = far, 1 = near, -1 = automatic (default)'),
     view: z.enum(['parallel', 'cross']).optional().describe('parallel (default) or cross-eye'),
     layout: z.enum(['portrait', 'sbs']).optional().describe('portrait = 1080x1920 with countdown and caption (default), sbs = plain side by side'),
-    seconds: z.number().min(1).max(180).optional().describe('Video length in seconds (default 15)'),
-    perImage: z.number().min(1).max(180).optional().describe('Seconds per image when two or more images are given (default 10)'),
+    cycles: z.number().int().min(1).max(60).optional().describe('Motion cycles per image (default 4). Video length = period x cycles x number of images, so the last frame always leads back into the first (seamless infinite loop)'),
+    seconds: z.number().min(1).max(600).optional().describe('Approximate length instead of cycles; rounded to whole cycles so the video still loops seamlessly'),
     countdown: z.boolean().optional().describe('Show remaining seconds at the top (portrait only)'),
     caption: z.string().optional().describe('Caption at the bottom, up to two lines separated by \\n (portrait only)'),
     endText: z.string().optional().describe('Text shown instead of the caption in the last 2 seconds'),

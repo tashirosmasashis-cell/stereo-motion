@@ -38,7 +38,7 @@ function serve() {
 }
 
 let shared = null;
-async function session() {
+export async function session() {
   if (shared) return shared;
   const server = await serve();
   const exe = CHROME_CANDIDATES.find((p) => fs.existsSync(p));
@@ -92,7 +92,17 @@ export async function makeVideo(o) {
     log(`下ごしらえ：${path.basename(f)}`);
     await page.evaluate((d, n) => window.stereoMotion.addImage(d, n), dataUrl(f), path.basename(f));
   }
-  const settings = await page.evaluate((s) => window.stereoMotion.setSettings(s || {}), o.settings || {});
+  // 長さは「1周×周回数×枚数」でしか決まらない（必ず永久ループ）。秒で頼まれたら、いちばん近い周回数に丸める
+  const want = { ...(o.settings || {}) };
+  if (want.seconds != null && want.cycles == null) {
+    const defs = await page.evaluate(() => window.stereoMotion.defaults);
+    const period = Math.round(Number(want.period ?? defs.period) * Number(want.fps ?? defs.fps)) / Number(want.fps ?? defs.fps);
+    want.cycles = Math.max(1, Math.round(Number(want.seconds) / (period * o.images.length)));
+  }
+  delete want.seconds;
+  delete want.perImage;
+  // 頼むたびに、はじめの設定から組み直す（前の依頼の設定を持ち越さない）
+  const settings = await page.evaluate((s) => window.stereoMotion.setSettings({ ...window.stereoMotion.defaults, ...s }), want);
   const out = path.resolve(o.out || path.join(os.tmpdir(), `stereo-${settings.motion}-${Date.now()}.mp4`));
   fs.mkdirSync(path.dirname(out), { recursive: true });
 
