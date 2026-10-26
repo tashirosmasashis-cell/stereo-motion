@@ -30,7 +30,11 @@ function serve() {
     res.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'application/octet-stream' });
     fs.createReadStream(f).pipe(res);
   });
-  return new Promise((ok) => server.listen(0, '127.0.0.1', () => ok(server)));
+  // 毎回同じ番地で開く＝ブラウザに残ったモデルをいつも使える（ふさがっていれば空いている番地で）
+  return new Promise((ok) => {
+    server.once('error', () => server.listen(0, '127.0.0.1', () => ok(server)));
+    server.listen(Number(process.env.STEREO_PORT || 47231), '127.0.0.1', () => ok(server));
+  });
 }
 
 let shared = null;
