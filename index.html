@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>立体視ムービーメーカー by ずんだもんAI</title>
+<meta name="description" content="1枚の絵から、揺れたり回ったりする立体視（平行法・交差法）の動画を作ります。絵はあなたの PC から出ません。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='10' cy='16' r='7' fill='%237cc35a'/%3E%3Ccircle cx='22' cy='16' r='7' fill='%232f8f3a'/%3E%3C/svg%3E">
+</head>
+<body>
+<header class="top">
+  <h1>立体視ムービーメーカー <small>by ずんだもんAI</small></h1>
+  <p>1枚の絵から、揺れたり回ったりする立体視の動画を作ります。<strong>絵はあなたの PC から出ません</strong>（奥行きの推し量りも、動画にまとめるのも、このブラウザの中で動きます）。</p>
+</header>
+
+<main class="grid">
+  <section class="stage" aria-label="見本">
+    <div class="screen"><canvas id="out" width="1080" height="1920"></canvas></div>
+    <div class="stage-bar">
+      <span id="time"></span>
+      <button type="button" id="depth" class="btn btn-sub" aria-pressed="false">奥行きを見る</button>
+    </div>
+    <p class="howto"><b>平行法</b>：遠くを見るように目の力をぬき、左右の絵が3つに見えたら真ん中を見つめる。<b>交差法</b>：寄り目にして左右を重ねる。</p>
+  </section>
+
+  <section class="panel">
+    <div class="card">
+      <h2>1. 絵を入れる</h2>
+      <div id="drop" class="drop">
+        <p>ここに絵を落とす・貼り付ける</p>
+        <button type="button" id="pick" class="btn btn-main">絵を選ぶ</button>
+        <input type="file" id="file" accept="image/*" multiple hidden>
+      </div>
+      <p id="empty" class="muted">何枚でも入れられます。2枚以上なら順番に切り替わります。</p>
+      <ul id="items" class="items"></ul>
+      <label id="per-image-row" class="row" hidden>1枚の秒数 <input type="range" id="perImage" min="2" max="60" step="1"><output id="perImageV"></output></label>
+      <p id="status" class="status" role="status"></p>
+    </div>
+
+    <div class="card">
+      <h2>2. 動き</h2>
+      <div id="motions" class="segs" role="group" aria-label="動き"></div>
+      <label class="row">動きの大きさ <input type="range" id="amount" min="0" max="8" step="0.1"><output id="amountV"></output></label>
+      <label class="row">1周の秒数 <input type="range" id="period" min="1" max="12" step="0.5"><output id="periodV"></output></label>
+      <label class="row">立体の強さ <input type="range" id="stereo" min="0" max="10" step="0.1"><output id="stereoV"></output></label>
+      <div class="row">回る軸の深さ
+        <label class="chk"><input type="checkbox" id="pivotAuto">自動</label>
+        <input type="range" id="pivot" min="0" max="100" step="1" aria-label="回る軸の深さ（0＝奥・100＝手前）"><output id="pivotV"></output>
+      </div>
+      <div class="row radios" role="radiogroup" aria-label="見方">見方
+        <label class="chk"><input type="radio" name="view" value="parallel">平行法</label>
+        <label class="chk"><input type="radio" name="view" value="cross">交差法</label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>3. 出す形</h2>
+      <div class="row radios" role="radiogroup" aria-label="出す形">
+        <label class="chk"><input type="radio" name="layout" value="portrait">縦（1080×1920・スマホ向け）</label>
+        <label class="chk"><input type="radio" name="layout" value="sbs">左右に並べただけ</label>
+      </div>
+      <label class="row">長さ <input type="range" id="seconds" min="3" max="120" step="1"><output id="secondsV"></output></label>
+      <div id="text-rows">
+        <label class="chk"><input type="checkbox" id="countdown">上に残り秒数を出す</label>
+        <label class="col">下の文（2行まで）<textarea id="caption" rows="2"></textarea></label>
+        <label class="col">最後の2秒の文<input type="text" id="endText"></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>4. 書き出す</h2>
+      <div class="actions">
+        <button type="button" id="export" class="btn btn-main">動画を作る</button>
+        <button type="button" id="stop" class="btn btn-sub" hidden>止める</button>
+        <button type="button" id="reset" class="btn btn-sub">設定をはじめに戻す</button>
+      </div>
+      <progress id="progress" max="1" value="0"></progress>
+      <div id="result"></div>
+      <p class="muted">設定はこのページのアドレスに入ります。アドレスを渡せば同じ設定で作れます。</p>
+    </div>
+  </section>
+</main>
+
+<footer class="foot">
+  <p>目の体操・リフレッシュ用です（視力が回復するという研究の裏付けはありません）。疲れたら休んでください。</p>
+  <p><a href="https://github.com/tashirosmasashis-cell/stereo-motion">GitHub（MIT）</a> ・ 奥行きのモデル：Depth Anything V2 Small（Apache-2.0）を transformers.js で、このブラウザの中で動かしています。モデルは初回だけ Hugging Face から読み込みます。</p>
+</footer>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>

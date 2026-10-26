@@ -1,0 +1,25 @@
+{
+  "name": "stereo-motion",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc"
+  },
+  "license": "MIT",
+  "description": "1枚の絵から、揺れたり回ったりする立体視の動画を作る（ブラウザだけで動く）",
+  "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "mediabunny": "^1.62.1",
+    "puppeteer-core": "^25.16.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  },
+  "private": true,
+  "type": "module"
+}
