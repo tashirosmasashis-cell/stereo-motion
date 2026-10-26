@@ -52,7 +52,10 @@ export async function prepare(file: Blob, name: string, onProgress?: (msg: strin
   const scale = Math.min(1, WORK / Math.max(width, height));
   const workW = Math.max(16, Math.round(width * scale)), workH = Math.max(16, Math.round(height * scale));
 
-  const cv = new OffscreenCanvas(workW, workH);
+  // OffscreenCanvas が無いブラウザ（古めの Safari など）でも動くように、ふつうの canvas を使う
+  const cv = document.createElement('canvas');
+  cv.width = workW;
+  cv.height = workH;
   const ctx = cv.getContext('2d', { willReadFrequently: true })!;
   ctx.drawImage(color, 0, 0, workW, workH);
   const rgba = ctx.getImageData(0, 0, workW, workH).data;

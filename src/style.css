@@ -65,6 +65,7 @@ textarea, input[type=text] { font: inherit; padding: 8px 10px; border: 1px solid
 .btn-main { background: var(--green); color: #fff; }
 .btn-main:disabled { opacity: .5; cursor: wait; }
 .btn-sub { background: #fff; color: var(--ink); border-color: var(--line); }
+.btn-sub:disabled { opacity: .45; cursor: default; }
 .btn-sub[aria-pressed=true] { background: var(--green-soft); border-color: var(--green); }
 .icon { font: inherit; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: #fff; cursor: pointer; }
 .icon:disabled { opacity: .3; cursor: default; }

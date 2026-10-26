@@ -73,7 +73,10 @@ function processQueue(): Promise<void> {
       } catch (e) {
         it.status = 'err';
         it.error = (e as Error).message;
-        status(`${it.name}：うまく読めませんでした（${it.error}）`);
+        // 古いブラウザで部品が足りないときは、何が要るかを言う
+        if (/OffscreenCanvas|WebAssembly|not supported/i.test(it.error))
+          status(`${it.name}：このブラウザでは奥行きを推し量れません。PC の Chrome・Edge か、iPhone は iOS 16.4 以降の Safari で開いてください`);
+        else status(`${it.name}：うまく読めませんでした（${it.error}）`);
       }
       renderList();
     }
@@ -109,6 +112,8 @@ function renderList() {
     ul.appendChild(li);
   });
   $('#empty').hidden = items.length > 0;
+  // 奥行きは、準備できた絵があるときだけ見られる
+  $<HTMLButtonElement>('#depth').disabled = !items.some((i) => i.status === 'ok');
   $('#per-image-row').hidden = items.length < 2;
 }
 
