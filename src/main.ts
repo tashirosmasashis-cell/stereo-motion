@@ -311,6 +311,13 @@ window.stereoMotion = {
   },
 };
 
+// 個人サイトに埋め込まれたとき、枠の高さを中身に合わせてもらう（高さの数字だけを送る）
+if (window.parent !== window) {
+  const send = () => window.parent.postMessage({ stereoMotionHeight: document.documentElement.scrollHeight }, '*');
+  new ResizeObserver(send).observe(document.body);
+  window.addEventListener('load', send);
+}
+
 buildControls();
 bindButtons();
 renderList();
