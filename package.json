@@ -6,7 +6,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc",
-    "check:loop": "node mcp/loop-check.mjs"
+    "check:loop": "node mcp/loop-check.mjs",
+    "api": "node mcp/api.mjs",
+    "mcp": "node mcp/server.mjs"
   },
   "license": "MIT",
   "description": "1枚の絵から、揺れたり回ったりする立体視の動画を作る（ブラウザだけで動く）",

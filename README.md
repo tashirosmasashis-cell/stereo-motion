@@ -60,6 +60,8 @@ claude mcp add stereo-motion -- node /path/to/stereo-motion/mcp/server.mjs
 
 コマンドで試す：`node mcp/cli.mjs --motion cw --out out.webm image.png`
 
+AI エージェント向けの説明書：[docs/FOR-AI.md](docs/FOR-AI.md)（MCP・この PC だけの HTTP API（`npm run api`・OpenAPI あり）・コマンドは、道具の名前・引数・返事が同じ）。
+
 ## 動画に置く（Remotion）
 
 透過 WebM はそのまま置けます：`<OffthreadVideo src={staticFile('stereo.webm')} transparent muted loop />`。画面から作った透明つき PNG 連番の ZIP は、解いて `ffmpeg -framerate 30 -i frames/%04d.png -c:v libvpx-vp9 -pix_fmt yuva420p -auto-alt-ref 0 stereo.webm`（ProRes 4444 なら `-c:v prores_ks -profile:v 4444 -pix_fmt yuva444p10le stereo.mov`）。ブラウザの動画の部品は透明を残して書き出せないので、画面では PNG 連番にしています。

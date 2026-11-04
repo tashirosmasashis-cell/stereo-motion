@@ -22,3 +22,7 @@
 - 測ったこと：Chrome 156 の VideoEncoder は `alpha:'keep'` に対応していない（vp9・vp8・avc すべて unsupported）＝画面から透過 WebM は作れない。
 - 確かめたこと：合成の透過PNG→WebM（`alpha_mode=1`・四隅は透明・緑背景に重ねて縁取り無し）・.mov・背景つきPNG→MP4（h264）。
 - 未確認：本物の被写体の切り抜きでのふち（合成の楕円は硬い縁でギザつきが出る）・Remotion での表示・画面の実ブラウザでの操作。
+
+## 2026-11-05 API と AI 向けの説明書
+- 道具の定義を mcp/tools.mjs に1か所にして、MCP（server.mjs）と HTTP API（api.mjs・127.0.0.1:47232・/v1/tools・/openapi.json）の両方が使う＝名前・引数・返事が同じ。Origin 付き・JSON 以外は断る。説明書＝docs/FOR-AI.md・llms.txt。
+- 確かめたこと：API で本物の透過キャラ→透過 WebM（200）・Origin 403・JSON 以外 415・引数の誤り 400。ふちの半透明の帯と引き伸ばしの毛は、半透明を閾値で消す＋ふちの奥行きをなだらかにして解消。

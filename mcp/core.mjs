@@ -105,7 +105,8 @@ export async function makeVideo(o) {
   // 頼むたびに、はじめの設定から組み直す（前の依頼の設定を持ち越さない）
   const settings = await page.evaluate((s) => window.stereoMotion.setSettings({ ...window.stereoMotion.defaults, ...s }), want);
   const stem = `${path.basename(f).replace(/\.[^.]+$/, '')}-${settings.motion}`;
-  const out = path.resolve(o.out || path.join(os.tmpdir(), `${stem}-${Date.now()}.${alpha ? 'webm' : 'mp4'}`));
+  const ext = alpha ? 'webm' : 'mp4';
+  const out = path.resolve(o.out || (o.outDir ? path.join(o.outDir, `${stem}.${ext}`) : path.join(os.tmpdir(), `${stem}-${Date.now()}.${ext}`)));
   fs.mkdirSync(path.dirname(out), { recursive: true });
   const frames = await page.evaluate(() => window.stereoMotion.frameCount());
 

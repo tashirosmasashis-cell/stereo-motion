@@ -48,7 +48,7 @@ void main(){
     vec2 hb;
     march(uBgDepth, uv, hb);
     // 隠れていた所：色は背景の絵から、透明度は「その場所の元の絵の透明度」（被写体の外なら透明のまま）
-    float a = uAlpha == 1 ? texture(uColor, hb).a : 1.0;
+    float a = uAlpha == 1 ? texture(uColor, hb).a * step(0.06, texture(uBgDepth, hb).r) : 1.0;
     c = vec4(texture(uBg, hb).rgb * a, a);
     h = hb;
   } else {
@@ -57,6 +57,8 @@ void main(){
   }
   // 絵の外は透明（動いても被写体が枠で切れないよう、外側に透明の余白を持たせる）
   if (uAlpha == 1 && (h.x < 0.0 || h.x > 1.0 || h.y < 0.0 || h.y > 1.0)) c = vec4(0.0);
+  // ふちに出る薄い半透明の帯（ふちの1点が引き伸ばされた物）を消す：半分以下の透明度は透明に、ほぼ不透明は不透明に
+  if (uAlpha == 1) { float s = smoothstep(0.5, 0.95, c.a); c = vec4(c.rgb / max(c.a, 1e-4) * s, s); }
   o = c;
 }`;
 

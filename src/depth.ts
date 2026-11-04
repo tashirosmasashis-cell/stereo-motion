@@ -67,6 +67,8 @@ export async function prepare(file: Blob, name: string, onProgress?: (msg: strin
   const hasAlpha = clear > workW * workH * 0.002;
   const opaque = new Uint8Array(workW * workH);
   for (let i = 0; i < opaque.length; i++) opaque[i] = rgba[i * 4 + 3] >= 128 ? 1 : 0;
+  const solid = new Uint8Array(workW * workH);
+  for (let i = 0; i < solid.length; i++) solid[i] = rgba[i * 4 + 3] >= 250 ? 1 : 0;
   // 奥行きを読むときは、透明な所を灰色にして重ねた絵を見せる（真っ黒・真っ白の背景に引きずられない）
   const seen = new Uint8ClampedArray(rgba);
   if (hasAlpha) {
@@ -95,6 +97,9 @@ export async function prepare(file: Blob, name: string, onProgress?: (msg: strin
     // 透明な所は一番奥、被写体はそれより少し手前（ふちの外が被写体に引き伸ばされない）
     for (let i = 0; i < depth.length; i++) depth[i] = opaque[i] ? 0.05 + 0.95 * Math.min(1, Math.max(0, depth[i])) : 0;
   }
+    // ふちの崖をなだらかにする（崖があると、ふちの1点が帯状に引き伸ばされる）
+    const soft = boxBlur(depth, workW, workH, Math.max(2, Math.round(workW / 170)));
+    for (let i = 0; i < depth.length; i++) depth[i] = soft[i];
 
   onProgress?.('背景を作り中');
   // 背景の奥行き＝広めに「一番奥」を取ってから、なめらかにする
@@ -106,7 +111,7 @@ export async function prepare(file: Blob, name: string, onProgress?: (msg: strin
   for (let i = 0; i < mask.length; i++) mask[i] = depth[i] - bgDepth[i] > 0.04 ? 1 : 0;
   const grown = maxFilterU8(mask, workW, workH, Math.max(2, Math.round(workW / 300)));
   // 透明な所は、背景の色の元にしない（穴として周りの被写体の色で埋める）
-  if (hasAlpha) for (let i = 0; i < grown.length; i++) if (!opaque[i]) grown[i] = 1;
+  if (hasAlpha) for (let i = 0; i < grown.length; i++) if (!solid[i]) grown[i] = 1;
   const bgColor = pushPull(rgba, grown, workW, workH);
 
   return { name, width, height, color, workW, workH, depth, bgDepth, bgColor, focus: centerFocus(depth, workW, workH, hasAlpha ? opaque : undefined), hasAlpha };
