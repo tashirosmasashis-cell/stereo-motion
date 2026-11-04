@@ -16,6 +16,7 @@ uniform vec2 uB;      // 奥行きによらないずれ（uv）
 uniform float uZoom;  // 端の外が見えないように少し拡大
 uniform int uSteps;
 uniform float uWall;
+uniform int uAlpha;   // 1＝透明のある絵（透明度を残して出す）
 in vec2 vUv; out vec4 o;
 vec2 src(vec2 uv, float z){ return uv - uA*z - uB; }
 float march(sampler2D dep, vec2 uv, out vec2 hit){
@@ -42,13 +43,21 @@ void main(){
   vec2 h;
   float z = march(uDepth, uv, h);
   float d = texture(uDepth, h).r;
+  vec4 c;
   if (d - z > uWall) {
     vec2 hb;
     march(uBgDepth, uv, hb);
-    o = vec4(texture(uBg, hb).rgb, 1.0);
+    // 隠れていた所：色は背景の絵から、透明度は「その場所の元の絵の透明度」（被写体の外なら透明のまま）
+    float a = uAlpha == 1 ? texture(uColor, hb).a : 1.0;
+    c = vec4(texture(uBg, hb).rgb * a, a);
+    h = hb;
   } else {
-    o = vec4(texture(uColor, h).rgb, 1.0);
+    c = texture(uColor, h);
+    if (uAlpha == 0) c.a = 1.0;
   }
+  // 絵の外は透明（動いても被写体が枠で切れないよう、外側に透明の余白を持たせる）
+  if (uAlpha == 1 && (h.x < 0.0 || h.x > 1.0 || h.y < 0.0 || h.y > 1.0)) c = vec4(0.0);
+  o = c;
 }`;
 
 export type EyeShift = { ax: number; ay: number; bx: number; by: number }; // uv の単位
@@ -63,7 +72,7 @@ export class Renderer {
 
   constructor(canvas: HTMLCanvasElement | OffscreenCanvas) {
     this.canvas = canvas;
-    const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false }) as WebGL2RenderingContext | null;
+    const gl = canvas.getContext('webgl2', { preserveDrawingBuffer: true, antialias: false, alpha: true, premultipliedAlpha: true }) as WebGL2RenderingContext | null;
     if (!gl) throw new Error('このブラウザでは WebGL2 が使えません');
     this.gl = gl;
     const sh = (type: number, srcText: string) => {
@@ -80,7 +89,7 @@ export class Renderer {
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) || 'link');
     this.prog = p;
     gl.useProgram(p);
-    for (const n of ['uColor', 'uDepth', 'uBg', 'uBgDepth', 'uA', 'uB', 'uZoom', 'uSteps', 'uWall']) this.u[n] = gl.getUniformLocation(p, n);
+    for (const n of ['uColor', 'uDepth', 'uBg', 'uBgDepth', 'uA', 'uB', 'uZoom', 'uSteps', 'uWall', 'uAlpha']) this.u[n] = gl.getUniformLocation(p, n);
     const buf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
@@ -148,13 +157,14 @@ export class Renderer {
     gl.uniform2f(this.u.uB, s.bx, s.by);
     gl.uniform1f(this.u.uZoom, zoom);
     gl.uniform1i(this.u.uSteps, steps);
+    gl.uniform1i(this.u.uAlpha, layer.prep.hasAlpha ? 1 : 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
   clear() {
     const gl = this.gl;
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-    gl.clearColor(0, 0, 0, 1);
+    gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
   }
 }

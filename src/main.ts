@@ -1,13 +1,14 @@
 import './style.css';
 import { prepare, loadModel, type Prepared } from './depth';
 import { Renderer, type Layer } from './render';
-import { DEFAULTS, MOTIONS, clampSettings, drawFrame, layerAt, totalFrames, totalSeconds, type Settings, type Frame } from './scene';
-import { encodeVideo } from './export';
+import { DEFAULTS, MOTIONS, WIDTHS, clampSettings, drawFrame, totalFrames, totalSeconds, type Settings, type Frame } from './scene';
+import { encodeVideo, encodePngZip } from './export';
 
 // ---- 状態 ----
 type Item = { id: number; name: string; file: Blob; thumb: string; status: 'wait' | 'busy' | 'ok' | 'err'; error?: string; layer?: Layer };
 const items: Item[] = [];
 let nextId = 1;
+let selectedId = 0; // 見本に出している絵
 let settings: Settings = readHash();
 let exporting = false;
 let stopFlag = false;
@@ -45,12 +46,15 @@ function setSettings(p: Partial<Settings>) {
 }
 
 // ---- 絵 ----
-const layers = () => items.filter((i) => i.status === 'ok' && i.layer).map((i) => i.layer!);
+const ready = () => items.filter((i) => i.status === 'ok' && i.layer);
+// 見本に出す絵（選んだ絵・なければ最初の準備できた絵）
+const current = () => ready().find((i) => i.id === selectedId) ?? ready()[0];
 
 async function addFiles(files: Iterable<Blob & { name?: string }>) {
   for (const f of files) {
     if (!f.type.startsWith('image/')) continue;
     items.push({ id: nextId++, name: f.name || `絵${nextId}`, file: f, thumb: URL.createObjectURL(f), status: 'wait' });
+    selectedId = items[items.length - 1].id;
   }
   renderList();
   await processQueue();
@@ -89,10 +93,9 @@ function renderList() {
   ul.innerHTML = '';
   items.forEach((it, idx) => {
     const li = document.createElement('li');
-    const st = { wait: '待ち', busy: '準備中…', ok: '準備できた', err: '読めない' }[it.status];
+    const st = it.status === 'ok' ? (it.layer?.prep.hasAlpha ? '準備できた（透過）' : '準備できた') : { wait: '待ち', busy: '準備中…', err: '読めない' }[it.status];
     li.innerHTML = `<img alt="" src="${it.thumb}"><span class="nm"></span><span class="st st-${it.status}">${st}</span>
-      <button class="icon" data-a="up" aria-label="上へ" ${idx === 0 ? 'disabled' : ''}>↑</button>
-      <button class="icon" data-a="down" aria-label="下へ" ${idx === items.length - 1 ? 'disabled' : ''}>↓</button>
+      <button class="icon" data-a="pick" aria-label="見本に出す" ${current()?.id === it.id || it.status !== 'ok' ? 'disabled' : ''}>見る</button>
       <button class="icon" data-a="del" aria-label="外す">×</button>`;
     li.querySelector('.nm')!.textContent = it.name;
     li.querySelectorAll<HTMLButtonElement>('button').forEach((b) =>
@@ -103,8 +106,7 @@ function renderList() {
           URL.revokeObjectURL(it.thumb);
           items.splice(idx, 1);
         } else {
-          const j = a === 'up' ? idx - 1 : idx + 1;
-          [items[idx], items[j]] = [items[j], items[idx]];
+          selectedId = it.id;
         }
         renderList();
       }),
@@ -142,14 +144,10 @@ function buildControls() {
   num('period', '#period');
   num('stereo', '#stereo');
   num('cycles', '#cycles');
-  const pivot = $<HTMLInputElement>('#pivot'), pivotAuto = $<HTMLInputElement>('#pivotAuto');
-  pivot.addEventListener('input', () => setSettings({ pivot: Number(pivot.value) / 100 }));
-  pivotAuto.addEventListener('change', () => setSettings({ pivot: pivotAuto.checked ? -1 : 0.5 }));
   document.querySelectorAll<HTMLInputElement>('input[name=view]').forEach((r) => r.addEventListener('change', () => setSettings({ view: r.value as Settings['view'] })));
-  document.querySelectorAll<HTMLInputElement>('input[name=layout]').forEach((r) => r.addEventListener('change', () => setSettings({ layout: r.value as Settings['layout'] })));
-  $<HTMLInputElement>('#countdown').addEventListener('change', (e) => setSettings({ countdown: (e.target as HTMLInputElement).checked }));
-  $<HTMLTextAreaElement>('#caption').addEventListener('input', (e) => setSettings({ caption: (e.target as HTMLTextAreaElement).value }));
-  $<HTMLInputElement>('#endText').addEventListener('input', (e) => setSettings({ endText: (e.target as HTMLInputElement).value }));
+  const width = $<HTMLSelectElement>('#width');
+  for (const w of WIDTHS) width.add(new Option(`${w}px（左右の合計）`, String(w)));
+  width.addEventListener('change', () => setSettings({ width: Number(width.value) }));
   $('#reset').addEventListener('click', () => { settings = { ...DEFAULTS }; writeHash(); syncControls(); });
   syncControls();
 }
@@ -166,26 +164,13 @@ function syncControls() {
   set('#stereo', settings.stereo, '#stereoV', (v) => `${v.toFixed(1)}%`);
   set('#cycles', settings.cycles, '#cyclesV', (v) => `${v}周`);
   updateLength();
-  const auto = settings.pivot < 0;
-  $<HTMLInputElement>('#pivotAuto').checked = auto;
-  $<HTMLInputElement>('#pivot').disabled = auto;
-  if (!auto) set('#pivot', Math.round(settings.pivot * 100), '#pivotV', (v) => `${v}`);
-  else $('#pivotV').textContent = '自動';
   document.querySelectorAll<HTMLInputElement>('input[name=view]').forEach((r) => (r.checked = r.value === settings.view));
-  document.querySelectorAll<HTMLInputElement>('input[name=layout]').forEach((r) => (r.checked = r.value === settings.layout));
-  $<HTMLInputElement>('#countdown').checked = settings.countdown;
-  const cap = $<HTMLTextAreaElement>('#caption');
-  if (document.activeElement !== cap) cap.value = settings.caption;
-  const end = $<HTMLInputElement>('#endText');
-  if (document.activeElement !== end) end.value = settings.endText;
-  $('#text-rows').hidden = settings.layout !== 'portrait';
+  $<HTMLSelectElement>('#width').value = String(settings.width);
 }
 
 // 長さは計算で決まる（自由に決めない＝必ずループになる）
 function updateLength() {
-  const n = Math.max(1, items.filter((i) => i.status === 'ok').length);
-  const sec = totalSeconds(settings, n);
-  $('#lengthV').textContent = `${Number(sec.toFixed(2))}秒` + (n > 1 ? `（${n}枚）` : '');
+  $('#lengthV').textContent = `${Number(totalSeconds(settings).toFixed(2))}秒（${totalFrames(settings)}コマ）`;
 }
 
 function motionIcon(m: string): string {
@@ -203,12 +188,12 @@ function motionIcon(m: string): string {
 let t0 = performance.now();
 function loop(now: number) {
   if (!exporting) {
-    const ls = layers();
-    const total = totalSeconds(settings, ls.length);
+    const it = current();
+    const total = totalSeconds(settings);
     const t = ((now - t0) / 1000) % total;
-    if (showDepth && ls.length) drawDepth(layerAt(settings, ls, t));
-    else drawFrame(renderer, frame, settings, ls, t);
-    $('#time').textContent = ls.length ? `${t.toFixed(1)} / ${Number(total.toFixed(2))}秒（くり返し）` : '';
+    if (showDepth && it) drawDepth(it.layer!);
+    else drawFrame(renderer, frame, settings, it?.layer, t);
+    $('#time').textContent = it ? `${t.toFixed(1)} / ${Number(total.toFixed(2))}秒（くり返し）` : '';
   }
   requestAnimationFrame(loop);
 }
@@ -227,20 +212,23 @@ function drawDepth(layer: Layer) {
 }
 
 // ---- 書き出し ----
-async function exportVideo(): Promise<{ blob: Blob; ext: string }> {
-  const ls = layers();
-  if (!ls.length) throw new Error('先に絵を入れてください');
+// 透明のある絵＝透明つき PNG 連番の ZIP／背景つきの絵＝MP4。1枚が1本の素材
+async function exportItem(it: Item): Promise<{ blob: Blob; ext: string }> {
+  const layer = it.layer!;
   const fps = settings.fps;
-  const n = totalFrames(settings, ls.length);
+  const n = totalFrames(settings);
   exporting = true;
   stopFlag = false;
+  const prog = (d: number, total: number) => {
+    $<HTMLProgressElement>('#progress').value = d / total;
+    status(`${it.name}：書き出し中 ${d} / ${total} コマ`);
+  };
   try {
-    drawFrame(renderer, frame, settings, ls, 0);
-    const enc = await encodeVideo(out, n, fps, (i) => drawFrame(renderer, frame, settings, ls, i / fps), (d, total) => {
-      $<HTMLProgressElement>('#progress').value = d / total;
-      status(`書き出し中 ${d} / ${total} コマ`);
-    }, () => stopFlag);
-    status('');
+    const draw = (i: number) => drawFrame(renderer, frame, settings, layer, i / fps);
+    draw(0);
+    const enc = layer.prep.hasAlpha
+      ? await encodePngZip(out, n, draw, prog, () => stopFlag)
+      : await encodeVideo(out, n, fps, draw, prog, () => stopFlag);
     return { blob: new Blob([enc.data], { type: enc.mime }), ext: enc.ext };
   } finally {
     exporting = false;
@@ -263,15 +251,19 @@ function bindButtons() {
     stop.hidden = false;
     $('#result').innerHTML = '';
     try {
-      const { blob, ext } = await exportVideo();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `stereo-${settings.motion}-${Date.now()}.${ext}`;
-      a.className = 'btn btn-main';
-      a.textContent = `動画を保存（${(blob.size / 1048576).toFixed(1)}MB）`;
-      $('#result').appendChild(a);
-      status(ext === 'mp4' ? 'できました' : 'できました（このブラウザでは WebM で作りました）');
+      const list = ready();
+      if (!list.length) throw new Error('先に絵を入れてください');
+      for (const it of list) {
+        const { blob, ext } = await exportItem(it);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${it.name.replace(/\.[^.]+$/, '')}-${settings.motion}.${ext}`;
+        a.className = 'btn btn-main';
+        a.textContent = `${a.download} を保存（${(blob.size / 1048576).toFixed(1)}MB）${ext === 'zip' ? '＝透明つき PNG 連番' : ''}`;
+        $('#result').appendChild(a);
+      }
+      status('できました');
     } catch (e) {
       status((e as Error).message);
     } finally {
@@ -290,7 +282,7 @@ declare global {
   interface Window { stereoMotion: unknown }
 }
 window.stereoMotion = {
-  version: 1,
+  version: 2,
   motions: MOTIONS.map((m) => ({ id: m.id, label: m.label, hint: m.hint })),
   defaults: DEFAULTS,
   async loadModel() { await loadModel(); return true; },
@@ -301,21 +293,24 @@ window.stereoMotion = {
     if (it.status !== 'ok') throw new Error(it.error || 'prepare failed');
     return items.length;
   },
+  hasAlpha() { return !!current()?.layer?.prep.hasAlpha; },
   clear() {
     for (const it of items.splice(0)) { if (it.layer) renderer.release(it.layer); URL.revokeObjectURL(it.thumb); }
     renderList();
   },
   setSettings(p: Partial<Settings>) { setSettings(p); return settings; },
   getSettings() { return settings; },
-  frameCount() { return totalFrames(settings, layers().length); },
+  frameCount() { return totalFrames(settings); },
   frame(i: number, type = 'image/jpeg', quality = 0.95) {
     exporting = true;
-    drawFrame(renderer, frame, settings, layers(), i / settings.fps);
+    drawFrame(renderer, frame, settings, current()?.layer, i / settings.fps);
     return out.toDataURL(type, quality);
   },
   release() { exporting = false; },
   async exportVideo() {
-    const { blob, ext } = await exportVideo();
+    const it = current();
+    if (!it) throw new Error('先に絵を入れてください');
+    const { blob, ext } = await exportItem(it);
     const buf = new Uint8Array(await blob.arrayBuffer());
     let s = '';
     for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000));

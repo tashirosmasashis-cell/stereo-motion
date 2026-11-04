@@ -22,6 +22,7 @@ export type Prepared = {
   bgDepth: Float32Array; // 手前の物を取り除いた奥行き
   bgColor: Uint8ClampedArray; // 手前の物を取り除いて背景で埋めた色（RGBA・下ごしらえの大きさ）
   focus: number; // 真ん中あたりの深さ（回る軸のはじめの値）
+  hasAlpha: boolean; // 透明な所がある絵（透過PNGなど）＝透明のまま立体視にする
 };
 
 type Estimator = (img: RawImage) => Promise<{ depth: RawImage }>;
@@ -47,7 +48,8 @@ export function loadModel(onProgress?: (msg: string) => void): Promise<Estimator
 }
 
 export async function prepare(file: Blob, name: string, onProgress?: (msg: string) => void): Promise<Prepared> {
-  const color = await createImageBitmap(file);
+  // 色は「透明度を掛けた色」で読む（ふちに黒い・白い縁取りが出ない）
+  const color = await createImageBitmap(file, { premultiplyAlpha: 'premultiply' });
   const width = color.width, height = color.height;
   const scale = Math.min(1, WORK / Math.max(width, height));
   const workW = Math.max(16, Math.round(width * scale)), workH = Math.max(16, Math.round(height * scale));
@@ -59,21 +61,40 @@ export async function prepare(file: Blob, name: string, onProgress?: (msg: strin
   const ctx = cv.getContext('2d', { willReadFrequently: true })!;
   ctx.drawImage(color, 0, 0, workW, workH);
   const rgba = ctx.getImageData(0, 0, workW, workH).data;
+  // 透明な所がある絵か（ほんの少しの半透明は数えない）
+  let clear = 0;
+  for (let i = 3; i < rgba.length; i += 4) if (rgba[i] < 250) clear++;
+  const hasAlpha = clear > workW * workH * 0.002;
+  const opaque = new Uint8Array(workW * workH);
+  for (let i = 0; i < opaque.length; i++) opaque[i] = rgba[i * 4 + 3] >= 128 ? 1 : 0;
+  // 奥行きを読むときは、透明な所を灰色にして重ねた絵を見せる（真っ黒・真っ白の背景に引きずられない）
+  const seen = new Uint8ClampedArray(rgba);
+  if (hasAlpha) {
+    for (let i = 0; i < workW * workH; i++) {
+      const a = rgba[i * 4 + 3] / 255;
+      for (let c = 0; c < 3; c++) seen[i * 4 + c] = rgba[i * 4 + c] * a + 128 * (1 - a);
+      seen[i * 4 + 3] = 255;
+    }
+  }
 
   const run = await loadModel(onProgress);
   onProgress?.('奥行きを推し量り中');
-  const raw = new RawImage(new Uint8ClampedArray(rgba), workW, workH, 4).rgb();
+  const raw = new RawImage(new Uint8ClampedArray(seen), workW, workH, 4).rgb();
   const { depth: dimg } = await run(raw);
-  const d0 = toFloat(dimg, workW, workH);
+  const d0 = toFloat(dimg, workW, workH, hasAlpha ? opaque : undefined);
 
   onProgress?.('ふちを整え中');
   const gray = new Float32Array(workW * workH);
-  for (let i = 0; i < gray.length; i++) gray[i] = (rgba[i * 4] * 0.299 + rgba[i * 4 + 1] * 0.587 + rgba[i * 4 + 2] * 0.114) / 255;
+  for (let i = 0; i < gray.length; i++) gray[i] = (seen[i * 4] * 0.299 + seen[i * 4 + 1] * 0.587 + seen[i * 4 + 2] * 0.114) / 255;
   const r = Math.max(2, Math.round(workW / 160));
   const guided = guidedFilter(gray, d0, workW, workH, r, 1e-4);
-  normalize(guided);
+  normalize(guided, hasAlpha ? opaque : undefined);
   // ふちの線を本体と同じ深さにする（線が背景に置き去りにならない）
   const depth = maxFilter(guided, workW, workH, Math.max(1, Math.round(workW / 220)));
+  if (hasAlpha) {
+    // 透明な所は一番奥、被写体はそれより少し手前（ふちの外が被写体に引き伸ばされない）
+    for (let i = 0; i < depth.length; i++) depth[i] = opaque[i] ? 0.05 + 0.95 * Math.min(1, Math.max(0, depth[i])) : 0;
+  }
 
   onProgress?.('背景を作り中');
   // 背景の奥行き＝広めに「一番奥」を取ってから、なめらかにする
@@ -84,12 +105,14 @@ export async function prepare(file: Blob, name: string, onProgress?: (msg: strin
   const mask = new Uint8Array(workW * workH);
   for (let i = 0; i < mask.length; i++) mask[i] = depth[i] - bgDepth[i] > 0.04 ? 1 : 0;
   const grown = maxFilterU8(mask, workW, workH, Math.max(2, Math.round(workW / 300)));
+  // 透明な所は、背景の色の元にしない（穴として周りの被写体の色で埋める）
+  if (hasAlpha) for (let i = 0; i < grown.length; i++) if (!opaque[i]) grown[i] = 1;
   const bgColor = pushPull(rgba, grown, workW, workH);
 
-  return { name, width, height, color, workW, workH, depth, bgDepth, bgColor, focus: centerFocus(depth, workW, workH) };
+  return { name, width, height, color, workW, workH, depth, bgDepth, bgColor, focus: centerFocus(depth, workW, workH, hasAlpha ? opaque : undefined), hasAlpha };
 }
 
-function toFloat(img: RawImage, W: number, H: number): Float32Array {
+function toFloat(img: RawImage, W: number, H: number, mask?: Uint8Array): Float32Array {
   const src = img; // 大きさが違えば下で引き伸ばす
   const out = new Float32Array(W * H);
   const sw = src.width, sh = src.height, ch = src.channels;
@@ -104,13 +127,15 @@ function toFloat(img: RawImage, W: number, H: number): Float32Array {
       out[y * W + x] = v / 255;
     }
   }
-  normalize(out);
+  normalize(out, mask);
   return out;
 }
 
-function normalize(a: Float32Array) {
+// 0..1 にそろえる（mask があれば、その印の所だけで最小・最大を決める）
+function normalize(a: Float32Array, mask?: Uint8Array) {
   let lo = Infinity, hi = -Infinity;
-  for (const v of a) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  for (let i = 0; i < a.length; i++) { if (mask && !mask[i]) continue; const v = a[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
+  if (lo === Infinity) { lo = 0; hi = 1; }
   const s = hi > lo ? 1 / (hi - lo) : 0;
   for (let i = 0; i < a.length; i++) a[i] = Math.min(1, Math.max(0, (a[i] - lo) * s));
 }
@@ -222,10 +247,10 @@ function pushPull(rgba: Uint8ClampedArray, hole: Uint8Array, W: number, H: numbe
 }
 
 // 真ん中あたり（横は中央の4割・縦は中央の6割）の深さの中央値
-function centerFocus(d: Float32Array, W: number, H: number): number {
+function centerFocus(d: Float32Array, W: number, H: number, mask?: Uint8Array): number {
   const v: number[] = [];
   for (let y = Math.round(H * 0.2); y < H * 0.8; y += 2)
-    for (let x = Math.round(W * 0.3); x < W * 0.7; x += 2) v.push(d[y * W + x]);
+    for (let x = Math.round(W * 0.3); x < W * 0.7; x += 2) if (!mask || mask[y * W + x]) v.push(d[y * W + x]);
   v.sort((a, b) => a - b);
   return v.length ? v[Math.floor(v.length * 0.6)] : 0.5;
 }

@@ -1,7 +1,31 @@
 // 1コマずつ描いて、ブラウザの動画の部品（WebCodecs）と Mediabunny で MP4（使えなければ WebM）にまとめる。
+import { zipStore, type ZipEntry } from './zip';
 import { Output, Mp4OutputFormat, WebMOutputFormat, BufferTarget, CanvasSource, QUALITY_HIGH, getFirstEncodableVideoCodec } from 'mediabunny';
 
-export type Encoded = { data: ArrayBuffer; mime: string; ext: 'mp4' | 'webm' };
+export type Encoded = { data: ArrayBuffer; mime: string; ext: 'mp4' | 'webm' | 'zip' };
+
+// 透明のある絵：Chrome の動画の部品は透明を残して書き出せない（測って確かめた）ので、
+// 1コマずつ透明つきの PNG にして ZIP にまとめる。ffmpeg 1行で透過 WebM／ProRes 4444 にできる（README）。
+export async function encodePngZip(
+  canvas: HTMLCanvasElement,
+  frames: number,
+  draw: (i: number) => void | Promise<void>,
+  onProgress?: (done: number, total: number) => void,
+  shouldStop?: () => boolean,
+): Promise<Encoded> {
+  const files: ZipEntry[] = [];
+  const pad = Math.max(4, String(frames).length);
+  for (let i = 0; i < frames; i++) {
+    if (shouldStop?.()) throw new Error('止めました');
+    await draw(i);
+    const blob = await new Promise<Blob | null>((ok) => canvas.toBlob(ok, 'image/png'));
+    if (!blob) throw new Error('PNG にできませんでした');
+    files.push({ name: `frames/${String(i).padStart(pad, '0')}.png`, data: new Uint8Array(await blob.arrayBuffer()) });
+    onProgress?.(i + 1, frames);
+  }
+  const zip = zipStore(files);
+  return { data: await zip.arrayBuffer(), mime: 'application/zip', ext: 'zip' };
+}
 
 export async function encodeVideo(
   canvas: HTMLCanvasElement | OffscreenCanvas,

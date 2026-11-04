@@ -11,7 +11,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { makeVideo, close, session } from './core.mjs';
 
-const images = process.argv.slice(2);
+const images = process.argv.slice(2, 3);
 if (!images.length) { console.error('使い方：node mcp/loop-check.mjs 絵.png [絵2.png …]'); process.exit(2); }
 
 let bad = 0;
@@ -19,7 +19,7 @@ try {
   for (const motion of ['sway-x', 'sway-y', 'cw', 'ccw']) {
     const out = path.join(os.tmpdir(), `loop-check-${motion}.mp4`);
     // 文字の重ね（残り秒数・最後の文）は動画が頭に戻ると最初に戻るので、絵だけの形で調べる
-    const r = await makeVideo({ images, out, settings: { motion, cycles: 1, layout: 'sbs', period: 3.3 } });
+    const r = await makeVideo({ image: images[0], out, settings: { motion, cycles: 1, width: 1080, period: 3.3 } });
     const { page } = await session();
     const res = await page.evaluate(() => {
       const sm = window.stereoMotion;

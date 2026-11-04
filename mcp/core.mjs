@@ -43,13 +43,16 @@ export async function session() {
   const server = await serve();
   const exe = CHROME_CANDIDATES.find((p) => fs.existsSync(p));
   if (!exe) throw new Error('Chrome か Edge が見つかりません（STEREO_CHROME に場所を入れてください）');
-  const browser = await puppeteer.launch({
+  const base = process.env.STEREO_PROFILE || path.join(ROOT, '.cache', 'chrome');
+  const launch = (dir) => puppeteer.launch({
     executablePath: exe,
     headless: process.env.STEREO_HEADFUL ? false : true,
     // モデルの読み込みを次回に残す（2回目から速い）
-    userDataDir: path.join(ROOT, '.cache', 'chrome'),
+    userDataDir: dir,
     args: ['--enable-gpu', '--ignore-gpu-blocklist', '--use-angle=default', '--window-size=1280,900'],
   });
+  // 別の MCP が同じ置き場所を使っているときは、この処理専用の置き場所で起動する（モデルは取り直しになる）
+  const browser = await launch(base).catch((e) => (/already running/.test(String(e.message)) ? launch(`${base}-${process.pid}`) : Promise.reject(e)));
   const page = await browser.newPage();
   const logs = [];
   page.on('console', (m) => logs.push(`${m.type()}: ${m.text()}`));
@@ -79,54 +82,72 @@ const dataUrl = (file) => {
 };
 
 /**
- * 絵（1枚以上）と設定から立体視の動画を作る。
- * @param {{ images: string[], settings?: object, out?: string, onLog?: (s: string) => void }} o
+ * 絵1枚と設定から立体視の素材を作る。透明のある絵＝透過 WebM（ffmpeg・prores:true なら ProRes 4444 の .mov も）／背景つきの絵＝MP4。
+ * @param {{ image: string, settings?: object, out?: string, prores?: boolean, onLog?: (s: string) => void }} o
  */
 export async function makeVideo(o) {
   const { page, logs } = await session();
   const log = o.onLog || (() => {});
-  if (!o.images?.length) throw new Error('絵のパスを1つ以上ください');
+  const f = o.image;
+  if (!f || !fs.existsSync(f)) throw new Error(`絵がありません：${f}`);
   await page.evaluate(() => window.stereoMotion.clear());
-  for (const f of o.images) {
-    if (!fs.existsSync(f)) throw new Error(`絵がありません：${f}`);
-    log(`下ごしらえ：${path.basename(f)}`);
-    await page.evaluate((d, n) => window.stereoMotion.addImage(d, n), dataUrl(f), path.basename(f));
-  }
-  // 長さは「1周×周回数×枚数」でしか決まらない（必ず永久ループ）。秒で頼まれたら、いちばん近い周回数に丸める
+  log(`下ごしらえ：${path.basename(f)}`);
+  await page.evaluate((d, n) => window.stereoMotion.addImage(d, n), dataUrl(f), path.basename(f));
+  const alpha = await page.evaluate(() => window.stereoMotion.hasAlpha());
+  // 長さは「1周×周回数」でしか決まらない（必ず永久ループ）。秒で頼まれたら、いちばん近い周回数に丸める
   const want = { ...(o.settings || {}) };
   if (want.seconds != null && want.cycles == null) {
     const defs = await page.evaluate(() => window.stereoMotion.defaults);
     const period = Math.round(Number(want.period ?? defs.period) * Number(want.fps ?? defs.fps)) / Number(want.fps ?? defs.fps);
-    want.cycles = Math.max(1, Math.round(Number(want.seconds) / (period * o.images.length)));
+    want.cycles = Math.max(1, Math.round(Number(want.seconds) / period));
   }
   delete want.seconds;
-  delete want.perImage;
   // 頼むたびに、はじめの設定から組み直す（前の依頼の設定を持ち越さない）
   const settings = await page.evaluate((s) => window.stereoMotion.setSettings({ ...window.stereoMotion.defaults, ...s }), want);
-  const out = path.resolve(o.out || path.join(os.tmpdir(), `stereo-${settings.motion}-${Date.now()}.mp4`));
+  const stem = `${path.basename(f).replace(/\.[^.]+$/, '')}-${settings.motion}`;
+  const out = path.resolve(o.out || path.join(os.tmpdir(), `${stem}-${Date.now()}.${alpha ? 'webm' : 'mp4'}`));
   fs.mkdirSync(path.dirname(out), { recursive: true });
+  const frames = await page.evaluate(() => window.stereoMotion.frameCount());
 
-  let via = 'page';
-  try {
-    log('書き出し（画面の部品）');
-    const r = await page.evaluate(() => window.stereoMotion.exportVideo());
-    if (r.ext !== 'mp4') throw new Error(`MP4 にできない（${r.ext}）`);
-    fs.writeFileSync(out, Buffer.from(r.base64, 'base64'));
-  } catch (e) {
-    via = 'ffmpeg';
-    log(`画面の書き出しが使えないので ffmpeg でまとめます（${e.message}）`);
-    await framesToFfmpeg(page, settings, out, log);
+  let via = alpha ? "ffmpeg" : "page";
+  const extra = [];
+  if (alpha) {
+    log("透明つきのコマを ffmpeg で透過 WebM にまとめます");
+    await framesToFfmpeg(page, settings, out, log, "webm");
+    if (o.prores) {
+      const mov = out.replace(/\.[^.]+$/, '') + '.mov';
+      await framesToFfmpeg(page, settings, mov, log, "prores");
+      extra.push(mov);
+    }
+  } else {
+    try {
+      log("書き出し（画面の部品）");
+      const r = await page.evaluate(() => window.stereoMotion.exportVideo());
+      if (r.ext !== 'mp4') throw new Error(`MP4 にできない（${r.ext}）`);
+      fs.writeFileSync(out, Buffer.from(r.base64, 'base64'));
+    } catch (e) {
+      via = 'ffmpeg';
+      log(`画面の書き出しが使えないので ffmpeg でまとめます（${e.message}）`);
+      await framesToFfmpeg(page, settings, out, log, "mp4");
+    }
   }
-  return { out, via, settings, logs: logs.slice(-20) };
+  const size = await page.evaluate(() => { const c = document.querySelector("#out"); return [c.width, c.height]; });
+  return { out, extra, via, transparent: alpha, width: size[0], height: size[1], frames, seconds: frames / settings.fps, settings, logs: logs.slice(-20) };
 }
 
-async function framesToFfmpeg(page, settings, out, log) {
+async function framesToFfmpeg(page, settings, out, log, kind) {
   const n = await page.evaluate(() => window.stereoMotion.frameCount());
-  const ff = spawn('ffmpeg', ['-v', 'error', '-y', '-f', 'image2pipe', '-c:v', 'mjpeg', '-framerate', String(settings.fps), '-i', '-', '-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-crf', '18', '-movflags', '+faststart', out]);
+  const enc = {
+    webm: ['-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p', '-b:v', '0', '-crf', '24', '-row-mt', '1', '-auto-alt-ref', '0'],
+    prores: ['-c:v', 'prores_ks', '-profile:v', '4444', '-pix_fmt', 'yuva444p10le'],
+    mp4: ['-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-crf', '18', '-movflags', '+faststart'],
+  }[kind];
+  const png = kind !== 'mp4';
+  const ff = spawn('ffmpeg', ['-v', 'error', '-y', '-f', 'image2pipe', '-c:v', png ? 'png' : 'mjpeg', '-framerate', String(settings.fps), '-i', '-', ...enc, out]);
   const done = new Promise((ok, ng) => { ff.on('close', (c) => (c === 0 ? ok() : ng(new Error(`ffmpeg ${c}`)))); ff.on('error', ng); });
   try {
     for (let i = 0; i < n; i++) {
-      const url = await page.evaluate((k) => window.stereoMotion.frame(k), i);
+      const url = await page.evaluate((k, t) => window.stereoMotion.frame(k, t), i, png ? 'image/png' : 'image/jpeg');
       const buf = Buffer.from(url.slice(url.indexOf(',') + 1), 'base64');
       if (!ff.stdin.write(buf)) await new Promise((r) => ff.stdin.once('drain', r));
       if (i % 30 === 0) log(`コマ ${i} / ${n}`);

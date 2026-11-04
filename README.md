@@ -1,10 +1,11 @@
 # 立体視ムービーメーカー by ずんだAI
 
-**1枚の絵から、揺れたり回ったりする立体視（平行法・交差法）の動画を作る道具です。ブラウザだけで動きます。**
+**自分の動画に貼る「立体視の素材」を作る道具です。透過PNGから、背景が透明のまま揺れたり回ったりする左右のペア（平行法・交差法）ができます。ブラウザだけで動きます。**
 
 👉 **使う：https://tashirosmasashis-cell.github.io/stereo-motion/**
 
-- 絵を入れて、動き（左右の揺れ・上下の揺れ・時計回り・反時計回り）を選び、その場で確かめてから MP4 に書き出せます
+- 絵を入れて、動き（左右の揺れ・上下の揺れ・時計回り・反時計回り）を選び、その場で確かめてから書き出せます。**透明のある絵＝透明つき素材（透過 WebM／PNG連番）、背景つきの絵＝MP4**
+- 素材は左右のペアをぴったり切った形で、文字や枠は入れません。1周分を作って、動画の側でくり返し置けます（最後のコマが最初につながる永久ループ）
 - **絵はあなたの PC から出ません**。奥行きの推し量りも、毎コマの描画も、動画にまとめるのも、開いたブラウザの中で動きます（サーバーはありません）
 - 無料・登録なし・使った記録も取りません
 
@@ -27,7 +28,7 @@
 - **大きさ・1周の秒数・立体の強さ（左右のずれ）・回る軸の深さ**（はじめは絵の真ん中あたりの深さ＝人物のまわりを回る）
 - **いつも永久ループ**：長さは「1周の秒数 × 周回数 × 絵の枚数」でしか決まりません。動画の最後のコマの次が最初のコマにそのままつながるので、くり返し再生してもつなぎ目が出ません
 - **絵を何枚でも**入れられます。1枚ごとに決まった周回数を回り、ちょうど回り終えた所で次の絵に替わります
-- **縦 1080×1920**（スマホ・ショート動画向け。上に残り秒数、下に2行の文、最後の2秒に締めの文）か、**左右に並べただけ**の形
+- **縦 1080×1920**（スマホ・ショート動画向け。文字は入れず、動画素材として書き出します）か、**左右に並べただけ**の形
 - 設定はページのアドレスに入るので、アドレスを渡せば同じ設定で作れます
 - 奥行きの絵を見る・確かめる
 
@@ -54,10 +55,14 @@ claude mcp add stereo-motion -- node /path/to/stereo-motion/mcp/server.mjs
 
 道具：
 
-- `make_stereo_video`：絵のパス（1枚以上）と設定（`motion`・`amount`・`period`・`stereo`・`pivot`・`view`・`layout`・`cycles`・`countdown`・`caption`・`endText`。`seconds` を渡すと近い周回数に丸めます）から MP4 を作り、そのパスを返します
+- `make_stereo_video`：絵のパス（1枚以上）と設定（`motion`・`amount`・`period`・`stereo`・`pivot`・`view`・`width`・`cycles`。`seconds` を渡すと近い周回数に丸めます）から、1枚ごとに別の素材を作ってパスを返します。透明のある絵＝透過 WebM（VP9・アルファ。`prores:true` で ProRes 4444 の .mov も）、背景つきの絵＝MP4
 - `list_motions`：動きの種類とはじめの設定
 
-コマンドで試す：`node mcp/cli.mjs --motion cw --cycles 2 --out out.mp4 image.png`
+コマンドで試す：`node mcp/cli.mjs --motion cw --out out.webm image.png`
+
+## 動画に置く（Remotion）
+
+透過 WebM はそのまま置けます：`<OffthreadVideo src={staticFile('stereo.webm')} transparent muted loop />`。画面から作った透明つき PNG 連番の ZIP は、解いて `ffmpeg -framerate 30 -i frames/%04d.png -c:v libvpx-vp9 -pix_fmt yuva420p -auto-alt-ref 0 stereo.webm`（ProRes 4444 なら `-c:v prores_ks -profile:v 4444 -pix_fmt yuva444p10le stereo.mov`）。ブラウザの動画の部品は透明を残して書き出せないので、画面では PNG 連番にしています。
 
 画面の書き出しが使えない環境では、毎コマの絵を受け取って [ffmpeg](https://ffmpeg.org/) でまとめます（ffmpeg が要ります）。
 

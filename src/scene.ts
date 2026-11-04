@@ -10,6 +10,9 @@ export const MOTIONS: { id: Motion; label: string; hint: string }[] = [
   { id: 'still', label: '止める', hint: '動かさない（立体だけ）' },
 ];
 
+// 左右のペア全体の横幅の選べる値
+export const WIDTHS = [1080, 1920, 3840];
+
 export type Settings = {
   motion: Motion;
   amount: number; // 動きの大きさ（幅に対する％）
@@ -17,11 +20,8 @@ export type Settings = {
   stereo: number; // 立体の強さ＝左右のずれ（幅に対する％）
   pivot: number; // 回る軸の深さ（0＝一番奥・1＝一番手前・-1＝絵ごとに自動）
   view: 'parallel' | 'cross'; // 平行法／交差法
-  layout: 'portrait' | 'sbs'; // 縦 1080×1920 のまん中／横並びそのまま
-  cycles: number; // 1枚あたりの周回数（長さ＝1周の秒数×周回数×絵の枚数＝必ず最初のコマにつながる）
-  countdown: boolean; // 残り秒数を出す
-  caption: string; // 下の文（改行で2行まで）
-  endText: string; // 最後の2秒に下の文の代わりに出す文
+  width: number; // 左右のペア全体の横幅（ピクセル）
+  cycles: number; // 周回数（長さ＝1周の秒数×周回数＝必ず最初のコマにつながる）
   fps: number;
 };
 
@@ -32,11 +32,8 @@ export const DEFAULTS: Settings = {
   stereo: 6,
   pivot: -1,
   view: 'parallel',
-  layout: 'portrait',
-  cycles: 4,
-  countdown: true,
-  caption: '遠くを見るように目の力をぬいて\n3つに見えたら真ん中を見つめよう',
-  endText: 'おつかれさまでした！',
+  width: 1920,
+  cycles: 1,
   fps: 30,
 };
 
@@ -51,19 +48,16 @@ export function clampSettings(s: Settings): Settings {
     stereo: n(s.stereo, 0, 12, DEFAULTS.stereo),
     pivot: s.pivot < 0 ? -1 : n(s.pivot, 0, 1, 0.5),
     view: s.view === 'cross' ? 'cross' : 'parallel',
-    layout: s.layout === 'sbs' ? 'sbs' : 'portrait',
+    width: WIDTHS.reduce((a, b) => (Math.abs(b - s.width) < Math.abs(a - s.width) ? b : a), DEFAULTS.width),
     cycles: Math.round(n(s.cycles, 1, 60, DEFAULTS.cycles)),
     fps: n(s.fps, 10, 60, 30),
-    caption: String(s.caption ?? '').slice(0, 120),
-    endText: String(s.endText ?? '').slice(0, 60),
   };
 }
 
-// 長さは「1周×周回数×絵の枚数」でしか決まらない＝動画はいつも永久ループになる（本人 2026-10-26「最初の画像に戻れば永久ループに」）
+// 長さは「1周×周回数」でしか決まらない＝動画はいつも永久ループになる（本人 2026-10-26「最初の画像に戻れば永久ループに」）
 export const framesPerCycle = (s: Settings) => Math.max(1, Math.round(s.period * s.fps));
-export const totalFrames = (s: Settings, images: number) => framesPerCycle(s) * s.cycles * Math.max(1, images);
-export const totalSeconds = (s: Settings, images: number) => totalFrames(s, images) / s.fps;
-const perImageSeconds = (s: Settings) => (framesPerCycle(s) * s.cycles) / s.fps;
+export const totalFrames = (s: Settings) => framesPerCycle(s) * s.cycles;
+export const totalSeconds = (s: Settings) => totalFrames(s) / s.fps;
 
 // カメラの位置（幅に対する割合の単位・下が＋）
 function cam(s: Settings, t: number): [number, number] {
@@ -95,15 +89,21 @@ export function eyeShift(s: Settings, layer: Layer, t: number, eye: -1 | 1): Eye
   };
 }
 
-// 一番大きいずれ＝端の外が見えないように拡大する量
-export function zoomFor(s: Settings, layer: Layer): number {
+// 一番大きいずれ（幅に対する割合・片側）
+function maxShift(s: Settings, layer: Layer): number {
   const p = layer.prep;
   const aspect = p.width / p.height;
   const pm = s.pivot < 0 ? p.focus : s.pivot;
   const a = s.amount / 100, e = s.stereo / 200;
   const mx = e * Math.max(STEREO_PLANE, 1 - STEREO_PLANE) + a * Math.max(pm, 1 - pm);
   const my = a * aspect * Math.max(pm, 1 - pm);
-  return Math.max(0.6, 1 - 2 * Math.max(mx, my) - 0.004);
+  return Math.max(mx, my);
+}
+
+// 背景つきの絵＝端の外が見えないように少し拡大する（<1）／透明のある絵＝被写体が切れないように外側へ余白を足す（>1）
+export function zoomFor(s: Settings, layer: Layer): number {
+  const m = maxShift(s, layer);
+  return layer.prep.hasAlpha ? Math.min(1.6, 1 + 2 * m + 0.004) : Math.max(0.6, 1 - 2 * m - 0.004);
 }
 
 export function stepsFor(s: Settings, layer: Layer, eyeW: number): number {
@@ -114,83 +114,28 @@ export function stepsFor(s: Settings, layer: Layer, eyeW: number): number {
 
 export type Frame = { out: HTMLCanvasElement | OffscreenCanvas; ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D };
 
-export function outputSize(s: Settings, layers: Layer[]): [number, number] {
-  if (s.layout === 'portrait') return [1080, 1920];
-  const p = layers[0]?.prep;
-  const eyeW = Math.min(960, p ? p.width : 960);
-  const eyeH = Math.round((eyeW * (p ? p.height : 540)) / (p ? p.width : 960));
+// 出す大きさ＝左右のペアをぴったり切った形（余白なし）。素材として動画に置くので、周りに何も足さない
+export function outputSize(s: Settings, layer?: Layer): [number, number] {
+  const p = layer?.prep;
+  const eyeW = Math.floor(s.width / 2);
+  const eyeH = Math.round((eyeW * (p ? p.height : 1080)) / (p ? p.width : 1920));
   return [eyeW * 2, eyeH + (eyeH % 2)];
 }
 
-export function layerAt(s: Settings, layers: Layer[], t: number): Layer {
-  if (layers.length <= 1) return layers[0];
-  const i = Math.floor(t / perImageSeconds(s) + 1e-9) % layers.length;
-  return layers[i];
-}
-
-const FONT = '"BIZ UDPGothic", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif';
-
-export function drawFrame(r: Renderer, f: Frame, s: Settings, layers: Layer[], t: number) {
-  const [W, H] = outputSize(s, layers);
+export function drawFrame(r: Renderer, f: Frame, s: Settings, layer: Layer | undefined, t: number) {
+  const [W, H] = outputSize(s, layer);
   if (f.out.width !== W) f.out.width = W;
   if (f.out.height !== H) f.out.height = H;
   const ctx = f.ctx;
-  ctx.fillStyle = '#0f1216';
-  ctx.fillRect(0, 0, W, H);
-  if (!layers.length) return;
-  const layer = layerAt(s, layers, t);
-  const p = layer.prep;
-
-  // 左右を並べる枠
-  const gap = s.layout === 'portrait' ? 12 : 0;
-  const side = s.layout === 'portrait' ? 12 : 0;
-  const eyeW = Math.floor((W - side * 2 - gap) / 2);
-  let eyeH = Math.round((eyeW * p.height) / p.width);
-  const maxH = s.layout === 'portrait' ? 1100 : H;
-  if (eyeH > maxH) eyeH = maxH;
-  const realW = s.layout === 'portrait' ? Math.round((eyeH * p.width) / p.height) : eyeW;
-  r.setSize(realW * 2, eyeH);
+  ctx.clearRect(0, 0, W, H);
+  if (!layer) return;
+  const eyeW = W / 2;
+  r.setSize(W, H);
   r.clear();
-  const zoom = zoomFor(s, layer), steps = stepsFor(s, layer, realW);
+  const zoom = zoomFor(s, layer), steps = stepsFor(s, layer, eyeW);
   // 平行法＝左に左目・右に右目／交差法＝入れ替える
   const leftEye: -1 | 1 = s.view === 'parallel' ? 1 : -1;
-  r.drawEye(layer, [0, 0, realW, eyeH], eyeShift(s, layer, t, leftEye), zoom, steps);
-  r.drawEye(layer, [realW, 0, realW, eyeH], eyeShift(s, layer, t, (-leftEye) as -1 | 1), zoom, steps);
-
-  // 縦の形では、数字と文の位置を絵の形によらず固定する（絵は枠の中で上下まん中）
-  const boxTop = s.layout === 'portrait' ? Math.round((H - maxH) / 2) - 40 : 0;
-  const top = s.layout === 'portrait' ? boxTop + Math.round((maxH - eyeH) / 2) : 0;
-  const x0 = Math.round((W - (realW * 2 + gap)) / 2);
-  ctx.drawImage(r.canvas, 0, 0, realW, eyeH, x0, top, realW, eyeH);
-  ctx.drawImage(r.canvas, realW, 0, realW, eyeH, x0 + realW + gap, top, realW, eyeH);
-
-  if (s.layout !== 'portrait') return;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.lineJoin = 'round';
-  if (s.countdown) {
-    const left = Math.max(0, Math.ceil(totalSeconds(s, layers.length) - t - 1e-6));
-    ctx.font = `900 260px ${FONT}`;
-    ctx.lineWidth = 22;
-    ctx.strokeStyle = '#2f8f3a';
-    ctx.strokeText(String(left), W / 2, boxTop / 2 + 10);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(String(left), W / 2, boxTop / 2 + 10);
-  }
-  const ending = s.endText && totalSeconds(s, layers.length) - t <= 2;
-  const lines = (ending ? s.endText : s.caption).split('\n').slice(0, 2).filter(Boolean);
-  ctx.font = `700 56px ${FONT}`;
-  const below = boxTop + maxH;
-  const mid = below + (H - below) / 2;
-  lines.forEach((ln, i) => {
-    const y = mid + (i - (lines.length - 1) / 2) * 84;
-    let size = 56;
-    ctx.font = `700 ${size}px ${FONT}`;
-    while (ctx.measureText(ln).width > W - 60 && size > 28) { size -= 2; ctx.font = `700 ${size}px ${FONT}`; }
-    ctx.lineWidth = 12;
-    ctx.strokeStyle = '#d02a7a';
-    ctx.strokeText(ln, W / 2, y);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(ln, W / 2, y);
-  });
+  r.drawEye(layer, [0, 0, eyeW, H], eyeShift(s, layer, t, leftEye), zoom, steps);
+  r.drawEye(layer, [eyeW, 0, eyeW, H], eyeShift(s, layer, t, (-leftEye) as -1 | 1), zoom, steps);
+  ctx.drawImage(r.canvas, 0, 0);
 }
