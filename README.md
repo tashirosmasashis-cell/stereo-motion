@@ -50,12 +50,26 @@ git clone https://github.com/tashirosmasashis-cell/stereo-motion.git
 cd stereo-motion
 npm install
 npm run build
-claude mcp add stereo-motion -- node /path/to/stereo-motion/mcp/server.mjs
+claude mcp add -s user stereo-motion -- node /path/to/stereo-motion/mcp/server.mjs
+```
+
+Codex と Antigravity も同じ口でつながります（MCP の口はあなたの PC の中で動きます。HP の住所につなぐ物ではありません）：
+
+```toml
+# Codex：~/.codex/config.toml
+[mcp_servers.stereo-motion]
+command = "node"
+args = ["/path/to/stereo-motion/mcp/server.mjs"]
+```
+
+```json
+// Antigravity：~/.gemini/config/mcp_config.json の "mcpServers" に足す
+"stereo-motion": { "command": "node", "args": ["/path/to/stereo-motion/mcp/server.mjs"] }
 ```
 
 道具：
 
-- `make_stereo_video`：絵のパス（1枚以上）と設定（`motion`・`amount`・`period`・`stereo`・`pivot`・`view`・`width`・`cycles`。`seconds` を渡すと近い周回数に丸めます）から、1枚ごとに別の素材を作ってパスを返します。透明のある絵＝透過 WebM（VP9・アルファ。`prores:true` で ProRes 4444 の .mov も）、背景つきの絵＝MP4
+- `make_stereo_video`：絵のパス（1枚以上）と設定（`motion`・`amount`・`period`・`stereo`・`pivot`・`view`・`width`・`cycles`。`seconds` を渡すと近い周回数に丸めます）から、1枚ごとに別の素材を作ってパスを返します。透明のある絵＝透過 WebM（VP9・アルファ。`prores:true` で ProRes 4444 の .mov も）、背景つきの絵＝MP4。`view` を `single` にすると、左右のペアにせず1枚の絵のまま奥行きでカメラが動く動画（写真の中身は変えずに短い動画にする・HP のショートリールなど）
 - `list_motions`：動きの種類とはじめの設定
 
 コマンドで試す：`node mcp/cli.mjs --motion cw --out out.webm image.png`

@@ -102,9 +102,12 @@ export async function makeVideo(o) {
     want.cycles = Math.max(1, Math.round(Number(want.seconds) / period));
   }
   delete want.seconds;
+  // view:'single'＝左右のペアにせず、1枚の絵のまま奥行きでカメラが動く素材（HP のショートリールなど平面の動画用・写真の中身は変えない）。左右の差0で描いて片目だけ切り出す
+  const single = want.view === 'single';
+  if (single) { want.view = 'parallel'; want.stereo = 0; }
   // 頼むたびに、はじめの設定から組み直す（前の依頼の設定を持ち越さない）
   const settings = await page.evaluate((s) => window.stereoMotion.setSettings({ ...window.stereoMotion.defaults, ...s }), want);
-  const stem = `${path.basename(f).replace(/\.[^.]+$/, '')}-${settings.motion}`;
+  const stem = `${path.basename(f).replace(/\.[^.]+$/, '')}-${settings.motion}${single ? '-flat' : ''}`;
   const ext = alpha ? 'webm' : 'mp4';
   const out = path.resolve(o.out || (o.outDir ? path.join(o.outDir, `${stem}.${ext}`) : path.join(os.tmpdir(), `${stem}-${Date.now()}.${ext}`)));
   fs.mkdirSync(path.dirname(out), { recursive: true });
@@ -114,12 +117,16 @@ export async function makeVideo(o) {
   const extra = [];
   if (alpha) {
     log("透明つきのコマを ffmpeg で透過 WebM にまとめます");
-    await framesToFfmpeg(page, settings, out, log, "webm");
+    await framesToFfmpeg(page, settings, out, log, "webm", single);
     if (o.prores) {
       const mov = out.replace(/\.[^.]+$/, '') + '.mov';
-      await framesToFfmpeg(page, settings, mov, log, "prores");
+      await framesToFfmpeg(page, settings, mov, log, "prores", single);
       extra.push(mov);
     }
+  } else if (single) {
+    via = 'ffmpeg';
+    log('1枚の絵のまま（片目）を ffmpeg でまとめます');
+    await framesToFfmpeg(page, settings, out, log, 'mp4', true);
   } else {
     try {
       log("書き出し（画面の部品）");
@@ -133,10 +140,10 @@ export async function makeVideo(o) {
     }
   }
   const size = await page.evaluate(() => { const c = document.querySelector("#out"); return [c.width, c.height]; });
-  return { out, extra, via, transparent: alpha, width: size[0], height: size[1], frames, seconds: frames / settings.fps, settings, logs: logs.slice(-20) };
+  return { out, extra, via, transparent: alpha, single, width: single ? Math.floor(size[0] / 4) * 2 : size[0], height: size[1], frames, seconds: frames / settings.fps, settings, logs: logs.slice(-20) };
 }
 
-async function framesToFfmpeg(page, settings, out, log, kind) {
+async function framesToFfmpeg(page, settings, out, log, kind, single = false) {
   const n = await page.evaluate(() => window.stereoMotion.frameCount());
   const enc = {
     webm: ['-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p', '-b:v', '0', '-crf', '24', '-row-mt', '1', '-auto-alt-ref', '0'],
@@ -144,7 +151,7 @@ async function framesToFfmpeg(page, settings, out, log, kind) {
     mp4: ['-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-crf', '18', '-movflags', '+faststart'],
   }[kind];
   const png = kind !== 'mp4';
-  const ff = spawn('ffmpeg', ['-v', 'error', '-y', '-f', 'image2pipe', '-c:v', png ? 'png' : 'mjpeg', '-framerate', String(settings.fps), '-i', '-', ...enc, out]);
+  const ff = spawn('ffmpeg', ['-v', 'error', '-y', '-f', 'image2pipe', '-c:v', png ? 'png' : 'mjpeg', '-framerate', String(settings.fps), '-i', '-', ...(single ? ['-vf', 'crop=trunc(iw/4)*2:trunc(ih/2)*2:0:0'] : []), ...enc, out]);
   const done = new Promise((ok, ng) => { ff.on('close', (c) => (c === 0 ? ok() : ng(new Error(`ffmpeg ${c}`)))); ff.on('error', ng); });
   try {
     for (let i = 0; i < n; i++) {

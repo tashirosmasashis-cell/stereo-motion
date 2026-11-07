@@ -1,14 +1,17 @@
 # AI エージェント向けの説明書（stereo-motion）
 
 **何をする道具か**：画像1枚から、動画に貼る「立体視の素材」を作ります。左右のペア（平行法／交差法）を、カメラが揺れる・回る動きで出します。
-**透明のある PNG/WebP → 背景が透明の WebM（VP9 アルファ）**、背景つきの画像 → MP4。文字・枠・背景は足しません。1周分でつなぎ目なくループするので、動画の側でくり返して置きます。
+**透明のある PNG/WebP → 背景が透明の WebM（VP9 アルファ）**、背景つきの画像 → MP4。文字・枠・背景は足しません。
+`view: "single"` にすると、左右のペアにせず**1枚の絵のまま奥行きでカメラが動く動画**（2.5D）になります。写真の中身は変えずに、本物の写真を短い動画にできます（HP のショートリールなど）。1周分でつなぎ目なくループするので、動画の側でくり返して置きます。
 すべて**この PC の中**で動き、画像はどこにも送りません。
 
 ## 使い方は3通り（道具の名前・引数・返事は同じ）
 
 | 入口 | 起動 | 呼び方 |
 | :-- | :-- | :-- |
-| MCP | `claude mcp add stereo-motion -- node <repo>/mcp/server.mjs` | 道具 `list_motions`・`make_stereo_video` |
+| MCP（Claude Code） | `claude mcp add -s user stereo-motion -- node <repo>/mcp/server.mjs` | 道具 `list_motions`・`make_stereo_video` |
+| MCP（Codex） | `~/.codex/config.toml` に `[mcp_servers.stereo-motion]`・`command = "node"`・`args = ["<repo>/mcp/server.mjs"]` | 同じ |
+| MCP（Antigravity） | `~/.gemini/config/mcp_config.json` の `mcpServers` に `"stereo-motion": {"command": "node", "args": ["<repo>/mcp/server.mjs"]}` | 同じ |
 | HTTP API（この PC だけ） | `npm run api`（`http://127.0.0.1:47232`） | `GET /v1/tools`・`POST /v1/tools/{name}`・`GET /openapi.json` |
 | コマンド | `node mcp/cli.mjs --out a.webm 絵.png` | 1枚ずつ |
 
@@ -28,7 +31,7 @@
 | `cycles` | 1–60 | 1 | 周回数（長さ＝period×cycles） |
 | `seconds` | 1–600 | — | 長さを秒で頼む（近い周回数に丸める） |
 | `stereo` | 0–12 | 6 | 左右のずれ（％）。立体の強さ |
-| `view` | `parallel`／`cross` | `parallel` | 平行法／交差法 |
+| `view` | `parallel`／`cross`／`single` | `parallel` | 平行法／交差法／1枚の絵のまま奥行きで動く（`stereo` は使わない・出る幅は `width` の半分） |
 | `width` | 1080／1920／3840 | 1920 | 左右の合計の横幅（高さは絵の縦横比） |
 | `pivot` | -1〜1 | -1（自動） | 回る軸の深さ（0＝奥・1＝手前） |
 | `fps` | 10–60 | 30 | |

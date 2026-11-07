@@ -17,7 +17,8 @@ export const TOOLS = [
     name: 'make_stereo_video',
     description:
       'Makes video MATERIAL for your own video: a side-by-side stereoscopic (parallel or cross-eye) pair whose camera sways or circles around the depth estimated from each image. ' +
-      'One output file per image. A PNG/WebP WITH transparency becomes a transparent WebM (VP9 alpha; use it in Remotion with <OffthreadVideo transparent>); an opaque image becomes an MP4. ' +
+      'With view "single" it makes ONE flat picture instead of a pair: the camera moves through the depth (2.5D parallax), turning a real photo into a short clip without changing its content (e.g. a website showreel). ' +
+      'One output file per image.A PNG/WebP WITH transparency becomes a transparent WebM (VP9 alpha; use it in Remotion with <OffthreadVideo transparent>); an opaque image becomes an MP4. ' +
       'The clip always loops seamlessly (length = whole motion cycles); make one cycle and loop it in the editor. No text, frame or background is added. ' +
       'Everything runs on this PC; images are never uploaded. Returns, per image, the output path(s), size, frame count and seconds.',
     shape: {
@@ -29,7 +30,7 @@ export const TOOLS = [
       period: z.number().min(1).max(30).optional().describe('Seconds per motion cycle (default 4). Rounded to a whole number of frames so the video loops seamlessly'),
       stereo: z.number().min(0).max(12).optional().describe('Left/right disparity, percent of the image width (default 6)'),
       pivot: z.number().min(-1).max(1).optional().describe('Depth the camera turns around: 0 = far, 1 = near, -1 = automatic (default)'),
-      view: z.enum(['parallel', 'cross']).optional().describe('parallel (default) or cross-eye'),
+      view: z.enum(['parallel', 'cross', 'single']).optional().describe('parallel (default), cross-eye, or single = one flat picture with depth parallax (no stereo pair; stereo is ignored; the output is half of width wide)'),
       width: z.number().optional().describe('Total width of the left+right pair in pixels: 1080, 1920 (default) or 3840. Height follows the image aspect.'),
       cycles: z.number().int().min(1).max(60).optional().describe('Motion cycles (default 1). Length = period x cycles'),
       seconds: z.number().min(1).max(600).optional().describe('Approximate length instead of cycles; rounded to whole cycles so the clip still loops seamlessly'),
