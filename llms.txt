@@ -1,5 +1,6 @@
 # stereo-motion
 > Makes transparent stereoscopic (side-by-side) video material from one image: a camera sways or circles around depth estimated in the browser. Transparent PNG in -> transparent WebM (VP9 alpha) out; opaque image -> MP4. Runs only on this PC.
 
+- Install (one line, registers itself in Claude Code / Codex / Antigravity): `npx -y github:tashirosmasashis-cell/stereo-motion add`
 - [Guide for AI agents](docs/FOR-AI.md): tools, arguments, results, examples (MCP, local HTTP API and CLI share the same definitions)
 - [README](README.md): what it is, how to run

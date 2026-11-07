@@ -16,13 +16,15 @@ const CHROME_CANDIDATES = [
   process.env.STEREO_CHROME,
   'C:/Program Files/Google/Chrome/Application/chrome.exe',
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+  'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
+  '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
   '/usr/bin/google-chrome',
   '/usr/bin/chromium',
 ].filter(Boolean);
 
 function serve() {
-  if (!fs.existsSync(path.join(DIST, 'index.html'))) throw new Error('先に `npm run build` で組み立ててください');
+  if (!fs.existsSync(path.join(DIST, 'index.html'))) throw new Error('先に `npm run build:page` で組み立ててください');
   const server = http.createServer((req, res) => {
     const u = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     const f = path.join(DIST, u === '/' ? 'index.html' : u);
@@ -43,7 +45,9 @@ export async function session() {
   const server = await serve();
   const exe = CHROME_CANDIDATES.find((p) => fs.existsSync(p));
   if (!exe) throw new Error('Chrome か Edge が見つかりません（STEREO_CHROME に場所を入れてください）');
-  const base = process.env.STEREO_PROFILE || path.join(ROOT, '.cache', 'chrome');
+  // 1行で入れた形（node_modules の中）は、入れ直しても消えない家の置き場所にモデルを残す
+  const installed = path.basename(path.dirname(ROOT)) === 'node_modules';
+  const base = process.env.STEREO_PROFILE || (installed ? path.join(os.homedir(), '.stereo-motion', 'chrome') : path.join(ROOT, '.cache', 'chrome'));
   const launch = (dir) => puppeteer.launch({
     executablePath: exe,
     headless: process.env.STEREO_HEADFUL ? false : true,
@@ -151,9 +155,12 @@ async function framesToFfmpeg(page, settings, out, log, kind, single = false) {
     mp4: ['-pix_fmt', 'yuv420p', '-c:v', 'libx264', '-crf', '18', '-movflags', '+faststart'],
   }[kind];
   const png = kind !== 'mp4';
-  const ff = spawn('ffmpeg', ['-v', 'error', '-y', '-f', 'image2pipe', '-c:v', png ? 'png' : 'mjpeg', '-framerate', String(settings.fps), '-i', '-', ...(single ? ['-vf', 'crop=trunc(iw/4)*2:trunc(ih/2)*2:0:0'] : []), ...enc, out]);
-  const done = new Promise((ok, ng) => { ff.on('close', (c) => (c === 0 ? ok() : ng(new Error(`ffmpeg ${c}`)))); ff.on('error', ng); });
+  const ff = spawn(process.env.STEREO_FFMPEG || 'ffmpeg', ['-v', 'error', '-y', '-f', 'image2pipe', '-c:v', png ? 'png' : 'mjpeg', '-framerate', String(settings.fps), '-i', '-', ...(single ? ['-vf', 'crop=trunc(iw/4)*2:trunc(ih/2)*2:0:0'] : []), ...enc, out]);
+  const done = new Promise((ok, ng) => { ff.on('close', (c) => (c === 0 ? ok() : ng(new Error(`ffmpeg ${c}`)))); ff.on('error', (e) => ng(e.code === 'ENOENT' ? new Error('ffmpeg が見つかりません。透過の絵と view:"single" には ffmpeg が要ります（Windows は winget install ffmpeg、Mac は brew install ffmpeg。別の場所なら STEREO_FFMPEG に入れてください）') : e)); });
+  ff.stdin.on('error', () => {});
+  // ffmpeg が起動できないときは、コマを作り始める前に分かりやすい言葉で止める
   try {
+    await Promise.race([new Promise((r) => ff.once('spawn', r)), done]);
     for (let i = 0; i < n; i++) {
       const url = await page.evaluate((k, t) => window.stereoMotion.frame(k, t), i, png ? 'image/png' : 'image/jpeg');
       const buf = Buffer.from(url.slice(url.indexOf(',') + 1), 'base64');

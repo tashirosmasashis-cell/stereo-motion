@@ -26,3 +26,10 @@
 ## 2026-11-05 API と AI 向けの説明書
 - 道具の定義を mcp/tools.mjs に1か所にして、MCP（server.mjs）と HTTP API（api.mjs・127.0.0.1:47232・/v1/tools・/openapi.json）の両方が使う＝名前・引数・返事が同じ。Origin 付き・JSON 以外は断る。説明書＝docs/FOR-AI.md・llms.txt。
 - 確かめたこと：API で本物の透過キャラ→透過 WebM（200）・Origin 403・JSON 以外 415・引数の誤り 400。ふちの半透明の帯と引き伸ばしの毛は、半透明を閾値で消す＋ふちの奥行きをなだらかにして解消。
+
+## 2026-11-07 1枚の絵のまま（view: single）と、1行で入れる形
+- `view:"single"`＝左右のペアにせず1枚の絵のまま奥行きでカメラが動く動画（Spotlight のショートリールで本物の写真に使った）。
+- 本人「住所1行で、だれの AI でも使える形に」。`npx -y github:tashirosmasashis-cell/stereo-motion add`＝取ってきた物を `~/.stereo-motion/app` へ写し、その PC にある Claude Code（`claude mcp add --scope user`）・Codex（`~/.codex/config.toml` の末尾・起動を60秒待つ）・Antigravity（`~/.gemini/config/mcp_config.json`）に `node <そこ>/mcp/server.mjs` を登録する。もう入っている AI は触らない。新しい版も同じ1行。モデルを残す Chrome の置き場所は `~/.stereo-motion/chrome`（入れ直しても消えない）。
+- 初回を短くするための作り：組み立てた画面 `dist` を倉庫に入れた（画面を直したら `npm run build:page` してから保存）。ブラウザの中だけで使う transformers.js と Mediabunny は devDependencies へ。npm は `build`・`prepare` の名前の台本があると開発用の道具まで全部入れるので、組み立ては `build:page` に改名（Pages の仕組みも合わせた）。
+- 測ったこと：まっさらな npm の置き場所から、手元の倉庫を npx で入れて口が開くまで 100秒→28秒（2回目は5秒）。1行の add を試しの家で：3つの AI に登録・2回目は「もう入っています」。入れた先の口から本物の写真で `view:"single"` の MP4（960×1280・120コマ）まで通った。
+- ffmpeg が無いときは、コマを作り始める前に入れ方を返す。Node.js は 22.12 以上（puppeteer-core の条件）。

@@ -45,15 +45,25 @@
 
 同じ描き方で、AI のエージェントからも動画を作れます。この PC の Chrome（か Edge）を見えない形で起こして同じ画面を動かすので、手で作った動画と同じ絵になります。絵はどこにも送りません。
 
+**入れ方は1行です**（Node.js が入っていれば、ターミナルに貼るだけ）：
+
+```bash
+npx -y github:tashirosmasashis-cell/stereo-motion add
+```
+
+プログラムを `~/.stereo-motion` に取ってきて、この PC にある **Claude Code・Codex・Antigravity** に自分で登録します（もう入っている AI は触りません）。AI を開き直すと使えます。新しい版にするときも同じ1行です。初回は30秒ほど、奥行きのモデル（約27MB）は最初に使うときに1回だけ読み込みます。
+
+- 要る物：Node.js 22.12 以上・Chrome か Edge・`ffmpeg`（透明のある絵と `view:"single"` のとき。Windows は `winget install ffmpeg`、Mac は `brew install ffmpeg`）
+- MCP の口はあなたの PC の中で動きます（HP の住所につなぐ物ではありません）。動画を作る力もあなたの PC の物を使い、だれにもお金はかかりません
+
+<details><summary>手で登録するとき</summary>
+
 ```bash
 git clone https://github.com/tashirosmasashis-cell/stereo-motion.git
 cd stereo-motion
 npm install
-npm run build
 claude mcp add -s user stereo-motion -- node /path/to/stereo-motion/mcp/server.mjs
 ```
-
-Codex と Antigravity も同じ口でつながります（MCP の口はあなたの PC の中で動きます。HP の住所につなぐ物ではありません）：
 
 ```toml
 # Codex：~/.codex/config.toml
@@ -66,6 +76,10 @@ args = ["/path/to/stereo-motion/mcp/server.mjs"]
 // Antigravity：~/.gemini/config/mcp_config.json の "mcpServers" に足す
 "stereo-motion": { "command": "node", "args": ["/path/to/stereo-motion/mcp/server.mjs"] }
 ```
+
+組み立てた画面（`dist`）は倉庫に入っているので、`npm run build:page` は画面を直したときだけ要ります。
+
+</details>
 
 道具：
 
@@ -87,7 +101,7 @@ AI エージェント向けの説明書：[docs/FOR-AI.md](docs/FOR-AI.md)（MCP
 よくある凡ミス（最後のコマと最初のコマが同じ絵で、くり返すと同じ絵が2コマ続いてカクッと止まる）が起きていないことを、4つの動きで確かめます。
 
 ```bash
-npm run build
+npm run build:page
 npm run check:loop -- image.png
 ```
 

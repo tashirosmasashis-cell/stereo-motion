@@ -7,15 +7,19 @@
 
 ## 使い方は3通り（道具の名前・引数・返事は同じ）
 
+**入れ方（1行・Claude Code・Codex・Antigravity に自分で登録する）**：`npx -y github:tashirosmasashis-cell/stereo-motion add`
+→ `~/.stereo-motion/app` に置き、見つかった AI に `node <そこ>/mcp/server.mjs` を登録する（もう入っている AI は触らない）。AI を開き直すと道具が出る。新しい版も同じ1行。
+
 | 入口 | 起動 | 呼び方 |
 | :-- | :-- | :-- |
+| MCP（1行で入れた形） | 上の1行 | 道具 `list_motions`・`make_stereo_video` |
 | MCP（Claude Code） | `claude mcp add -s user stereo-motion -- node <repo>/mcp/server.mjs` | 道具 `list_motions`・`make_stereo_video` |
 | MCP（Codex） | `~/.codex/config.toml` に `[mcp_servers.stereo-motion]`・`command = "node"`・`args = ["<repo>/mcp/server.mjs"]` | 同じ |
 | MCP（Antigravity） | `~/.gemini/config/mcp_config.json` の `mcpServers` に `"stereo-motion": {"command": "node", "args": ["<repo>/mcp/server.mjs"]}` | 同じ |
 | HTTP API（この PC だけ） | `npm run api`（`http://127.0.0.1:47232`） | `GET /v1/tools`・`POST /v1/tools/{name}`・`GET /openapi.json` |
 | コマンド | `node mcp/cli.mjs --out a.webm 絵.png` | 1枚ずつ |
 
-前提：`npm install` と `npm run build` が済んでいること。Chrome（または Edge）と、透明のある絵のときは `ffmpeg` が PATH にあること。
+前提：Node.js 22.12 以上・Chrome（または Edge）・透明のある絵と `view:"single"` のときは `ffmpeg` が PATH にあること（別の場所なら `STEREO_FFMPEG`・`STEREO_CHROME`）。手で置いたときは `npm install` だけ（組み立てた画面 `dist` は倉庫に入っている）。
 
 ## make_stereo_video
 
