@@ -20,7 +20,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # 画面の組み立てに GPU（CUDA）の部品は要らない＝落とさない（配布元が 404 で組み立てごと落ちた・2026-11-23）
       - run: npm ci
+        env:
+          ONNXRUNTIME_NODE_INSTALL_CUDA: skip
       - run: npm run build:page
       - uses: actions/upload-pages-artifact@v3
         with:
