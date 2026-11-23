@@ -1,5 +1,7 @@
 # 立体視ムービーメーカーの現在地
 
+> 📘 **2026-11-23 から、立体視の設計・仕様・落とし穴の正本は本 `personal/stereo-motion/HANDOVER.md`**（開き方 `cd C:\dev\personal\hub; npm run todo:book -- 立体視`）。この STATUS.md は、読む所を向け直す段8 まで残す写し＝直すのは本だけ。
+
 ## 2026-10-26 初版を公開
 - 本人「1枚の画像から立体視動画（カメラの動きだけ）を作れるなら作ってオープンソースで GIT にあげる・個人のウェブページに公開・処理は自分の PC のスペックで（私のサーバーに負荷はかからない）」。プラン＝`~/.claude/plans/velvety-rolling-leaf.md`（承認済み）。
 - 公開：GitHub https://github.com/tashirosmasashis-cell/stereo-motion （main に push で GitHub Pages へ自動）・使う所 https://tashirosmasashis-cell.github.io/stereo-motion/ ・個人サイト https://zunda.tsutsumicommunity.org/stereo/ （埋め込み）。
